@@ -9,6 +9,7 @@ import datetime
 import numpy as np
 import logging
 import os
+import deezer
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -122,5 +123,27 @@ class Downloader:
             self.download(item)
 
 
-downloader = Downloader("flac")
-downloader.download_list(["Elton John Tiny Dancer", "Coldplay The Scientist"])
+def process_deezer_url(url):
+    client = deezer.Client()
+    if url.startswith("https://www.deezer.com/us/album/"):
+        album_id = int(url[len("https://www.deezer.com/us/album/"):])
+        artist = client.get_album(album_id).get_artist()
+        return [f"{artist.name} - {track.title}" for track in client.get_album(album_id).get_tracks()]
+    elif url.startswith("https://www.deezer.com/us/track/"):
+        track_id = int(url[len("https://www.deezer.com/us/track/"):])
+        track = client.get_track(track_id)
+        artist = track.get_artist()
+        return [f"{artist.name} - {track.title}"]
+    elif url.startswith("https://www.deezer.com/us/playlist/"):
+        playlist_id = int(url[len("https://www.deezer.com/us/playlist/"):])
+        return [f"{track.get_artist().name} - {track.title}" for track in client.get_playlist(playlist_id).get_tracks()]
+
+
+def main():
+    deezer_url = input("Enter a deezer url: ")
+    song_list = process_deezer_url(deezer_url)
+    downloader = Downloader("flac")
+    downloader.download_list(song_list)
+
+
+main()
