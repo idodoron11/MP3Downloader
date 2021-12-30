@@ -1,3 +1,4 @@
+import selenium.common.exceptions
 from selenium import webdriver
 from time import sleep
 import datetime
@@ -39,8 +40,13 @@ class WaitEngine:
 
 
 class Downloader:
-    def __init__(self):
+    def __init__(self, format = "mp3"):
         self.wait_engine = WaitEngine()
+        self.download_pages = list()
+        if format in ["flac", "mp3"]:
+            self.format = format
+        else:
+            self.format = "mp3"
         logging.info("Opening a new browser window")
         self.browser = webdriver.Firefox()
         logging.info("Navigating to https://free-mp3-download.net/")
@@ -51,15 +57,40 @@ class Downloader:
         search_box = self.browser.find_element_by_id("q")
         self.wait_engine.wait()
         search_box.clear()
-        self.wait_engine.quick_wait()
         search_box.send_keys(query)
-        self.wait_engine.quick_wait()
         search_btn = self.browser.find_element_by_id("snd")
         logging.info(f"Searching for {query}.")
         search_btn.click()
+        try:
+            result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td[3]/a")
+            self.download_pages.append(result_link.get_attribute("href"))
+        except selenium.common.exceptions.NoSuchElementException:
+            logging.error(f"Could not find any results for {query}.")
+            self.download_pages.append(None)
+
+    def download_list(self, list):
+        for item in list:
+            self.search_for(item)
+
+        for url in self.download_pages:
+            if url is not None:
+                logging.info(f"Navigating to {url}")
+                self.browser.get(url)
+                input("If you see a CAPTCHA test, please solve it before proceeding.")
+                break
+
+        for index, url in enumerate(self.download_pages):
+            if url is not None:
+                self.wait_engine.wait()
+                logging.info(f"Navigating to {url}")
+                self.browser.get(url)
+                format_selector = self.browser.find_element_by_id(self.format)
+                format_selector.click()
+                download_btn = self.browser.find_element_by_class_name("dl")
+                self.wait_engine.quick_wait()
+                download_btn.click()
 
 
-search_terms = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-downloader = Downloader()
-for query in search_terms:
-    downloader.search_for(query)
+search_terms = ["fdlgjfldgkjdflkjlgkfl", "2", "3", "4"]
+downloader = Downloader("flac")
+downloader.download_list(search_terms)
