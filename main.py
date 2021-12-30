@@ -1,9 +1,14 @@
 import selenium.common.exceptions
 from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from time import sleep
 import datetime
 import numpy as np
 import logging
+import os
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -12,6 +17,7 @@ class WaitEngine:
     def __init__(self):
         self.lastReset = self.nextReset = None
         self.resetInterval = 10
+        self.bypassWait = False
         self.reset()
 
     def reset(self):
@@ -21,7 +27,10 @@ class WaitEngine:
 
     def wait(self, quick_wait=False):
         current_time = datetime.datetime.now()
-        if current_time >= self.nextReset:
+        if self.bypassWait:
+            logging.info(f"Waiting 3 seconds.")
+            sleep(3)
+        elif current_time >= self.nextReset:
             penalty = np.random.randint(120, 601)
             logging.info(f"Waiting {penalty} seconds.")
             sleep(penalty)
@@ -40,57 +49,78 @@ class WaitEngine:
 
 
 class Downloader:
-    def __init__(self, format = "mp3"):
+    def __init__(self, format="mp3"):
         self.wait_engine = WaitEngine()
-        self.download_pages = list()
+        self.wait_engine.bypassWait = True
         if format in ["flac", "mp3"]:
             self.format = format
         else:
             self.format = "mp3"
         logging.info("Opening a new browser window")
-        self.browser = webdriver.Firefox()
+        profile = webdriver.FirefoxProfile()
+        download_path = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
+        profile.set_preference("browser.download.dir", download_path)
+        profile.set_preference("browser.download.folderList", 2)
+        content_types = "audio/x-flac;audio/flac;application/flac;audio/x-ogg-flac; audio/x-oggflac; audio/mp3; " \
+                        "audio/mpeg; audio/mpeg3; audio/mpg; audio/x-mp3; audio/x-mpeg; audio/x-mpeg3; " \
+                        "audio/x-mpegaudio; audio/x-mpg; "
+        profile.set_preference("browser.helperApps.neverAsk.saveToDisk", content_types)
+        profile.set_preference("browser.download.manager.showWhenStarting", False)
+        profile.set_preference("browser.helperApps.alwaysAsk.force", False)
+        profile.set_preference("browser.download.manager.useWindow", False)
+        profile.set_preference("browser.download.manager.focusWhenStarting", False)
+        profile.set_preference("browser.download.manager.closeWhenDone", True)
+        self.browser = webdriver.Firefox(firefox_profile=profile)
+
+    def search_for(self, query):
+        self.wait_engine.wait()
         logging.info("Navigating to https://free-mp3-download.net/")
         self.browser.get("https://free-mp3-download.net/")
         self.wait_engine.quick_wait()
-
-    def search_for(self, query):
         search_box = self.browser.find_element_by_id("q")
-        self.wait_engine.wait()
         search_box.clear()
         search_box.send_keys(query)
         search_btn = self.browser.find_element_by_id("snd")
         logging.info(f"Searching for {query}.")
         search_btn.click()
+
+    def choose_first_result(self):
+        self.wait_engine.quick_wait()
+        result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
+                                                         "3]/a/button")
+        result_link.click()
+        self.wait_engine.quick_wait()
+        logging.info("Closing advertisement.")
+        webdriver.ActionChains(self.browser).send_keys(Keys.ESCAPE).perform()
+        WebDriverWait(self.browser, 10).until(
+            EC.url_contains("download.php")
+        )
+
+    def process_download_page(self):
+        format_selector = self.browser.find_element_by_id(self.format)
+        self.browser.execute_script("arguments[0].click();", format_selector)
+        captcha = self.browser.find_elements_by_id("captcha")
+        if len(captcha) > 0:
+            captcha = captcha[0]
+            if captcha.is_displayed():
+                input("Please solve the CAPTCHA challenge before proceeding\n")
+        # format_selector.click()
+        download_btn = self.browser.find_element_by_class_name("dl")
+        self.wait_engine.quick_wait()
+        download_btn.click()
+
+    def download(self, query):
+        self.search_for(query)
         try:
-            result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td[3]/a")
-            self.download_pages.append(result_link.get_attribute("href"))
+            self.choose_first_result()
+            self.process_download_page()
         except selenium.common.exceptions.NoSuchElementException:
-            logging.error(f"Could not find any results for {query}.")
-            self.download_pages.append(None)
+            logging.error(f"Could not download {query}.")
 
     def download_list(self, list):
         for item in list:
-            self.search_for(item)
-
-        for url in self.download_pages:
-            if url is not None:
-                logging.info(f"Navigating to {url}")
-                self.browser.get(url)
-                input("If you see a CAPTCHA test, please solve it before proceeding.")
-                break
-
-        for index, url in enumerate(self.download_pages):
-            if url is not None:
-                self.wait_engine.wait()
-                logging.info(f"Navigating to {url}")
-                self.browser.get(url)
-                format_selector = self.browser.find_element_by_id(self.format)
-                format_selector.click()
-                download_btn = self.browser.find_element_by_class_name("dl")
-                self.wait_engine.quick_wait()
-                download_btn.click()
+            self.download(item)
 
 
-search_terms = ["fdlgjfldgkjdflkjlgkfl", "2", "3", "4"]
 downloader = Downloader("flac")
-downloader.download_list(search_terms)
+downloader.download_list(["Elton John Tiny Dancer", "Coldplay The Scientist"])
