@@ -26,33 +26,27 @@ class WaitEngine:
         self.nextReset = self.lastReset + datetime.timedelta(minutes=self.resetInterval)
         logging.info(f"Wait engine was reset. Next reset will be in {self.resetInterval} minutes.")
 
-    def wait(self, quick_wait=False):
+    def wait(self, minimum = 0):
         current_time = datetime.datetime.now()
         if self.bypassWait:
             logging.info(f"Waiting 3 seconds.")
             sleep(3)
         elif current_time >= self.nextReset:
-            penalty = np.random.randint(120, 601)
+            # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
+            penalty = np.random.gamma(6, 60)
             logging.info(f"Waiting {penalty} seconds.")
-            sleep(penalty)
+            sleep(max(penalty, minimum))
             self.reset()
         else:
-            coin = np.random.choice([0, 1], p=[0.9, 0.1])
-            if quick_wait or coin == 0:
-                penalty = np.random.randint(2, 16)
-            else:
-                penalty = np.random.randint(16, 61)
+            # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
+            penalty = np.random.gamma(4, 1.8)
             logging.info(f"Waiting {penalty} seconds.")
-            sleep(penalty)
-
-    def quick_wait(self):
-        self.wait(True)
+            sleep(max(penalty, minimum))
 
 
 class Downloader:
     def __init__(self, format="mp3"):
         self.wait_engine = WaitEngine()
-        self.wait_engine.bypassWait = True
         if format in ["flac", "mp3"]:
             self.format = format
         else:
@@ -74,10 +68,9 @@ class Downloader:
         self.browser = webdriver.Firefox(firefox_profile=profile)
 
     def search_for(self, query):
-        self.wait_engine.wait()
         logging.info("Navigating to https://free-mp3-download.net/")
         self.browser.get("https://free-mp3-download.net/")
-        self.wait_engine.quick_wait()
+        self.wait_engine.wait()
         search_box = self.browser.find_element_by_id("q")
         search_box.clear()
         search_box.send_keys(query)
@@ -86,11 +79,11 @@ class Downloader:
         search_btn.click()
 
     def choose_first_result(self):
-        self.wait_engine.quick_wait()
+        self.wait_engine.wait()
         result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
                                                          "3]/a/button")
         result_link.click()
-        self.wait_engine.quick_wait()
+        self.wait_engine.wait()
         logging.info("Closing advertisement.")
         webdriver.ActionChains(self.browser).send_keys(Keys.ESCAPE).perform()
         WebDriverWait(self.browser, 10).until(
@@ -107,8 +100,9 @@ class Downloader:
                 input("Please solve the CAPTCHA challenge before proceeding\n")
         # format_selector.click()
         download_btn = self.browser.find_element_by_class_name("dl")
-        self.wait_engine.quick_wait()
+        self.wait_engine.wait()
         download_btn.click()
+        self.wait_engine.wait(10)
 
     def download(self, query):
         self.search_for(query)
