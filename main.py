@@ -33,15 +33,15 @@ class WaitEngine:
             sleep(3)
         elif current_time >= self.nextReset:
             # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
-            penalty = np.random.gamma(6, 60)
+            penalty = max(minimum, np.random.gamma(6, 60))
             logging.info(f"Waiting {penalty} seconds.")
-            sleep(max(penalty, minimum))
+            sleep(penalty)
             self.reset()
         else:
             # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
-            penalty = np.random.gamma(4, 1.8)
+            penalty = max(minimum, np.random.gamma(2, 2.2))
             logging.info(f"Waiting {penalty} seconds.")
-            sleep(max(penalty, minimum))
+            sleep(penalty)
 
 
 class Downloader:
@@ -102,7 +102,7 @@ class Downloader:
         download_btn = self.browser.find_element_by_class_name("dl")
         self.wait_engine.wait()
         download_btn.click()
-        self.wait_engine.wait(10)
+        self.wait_engine.wait(15)
 
     def download(self, query):
         self.search_for(query)
