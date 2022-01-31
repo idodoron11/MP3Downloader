@@ -2,6 +2,7 @@ import selenium.common.exceptions
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from time import sleep
@@ -52,20 +53,21 @@ class Downloader:
         else:
             self.format = "mp3"
         logging.info("Opening a new browser window")
-        profile = webdriver.FirefoxProfile()
+        options = Options()
         download_path = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
-        profile.set_preference("browser.download.dir", download_path)
-        profile.set_preference("browser.download.folderList", 2)
+        options.set_preference("browser.download.dir", download_path)
+        options.set_preference("browser.download.folderList", 2)
         content_types = "audio/x-flac;audio/flac;application/flac;audio/x-ogg-flac; audio/x-oggflac; audio/mp3; " \
                         "audio/mpeg; audio/mpeg3; audio/mpg; audio/x-mp3; audio/x-mpeg; audio/x-mpeg3; " \
                         "audio/x-mpegaudio; audio/x-mpg; "
-        profile.set_preference("browser.helperApps.neverAsk.saveToDisk", content_types)
-        profile.set_preference("browser.download.manager.showWhenStarting", False)
-        profile.set_preference("browser.helperApps.alwaysAsk.force", False)
-        profile.set_preference("browser.download.manager.useWindow", False)
-        profile.set_preference("browser.download.manager.focusWhenStarting", False)
-        profile.set_preference("browser.download.manager.closeWhenDone", True)
-        self.browser = webdriver.Firefox(firefox_profile=profile)
+        options.set_preference("browser.helperApps.neverAsk.saveToDisk", content_types)
+        options.set_preference("browser.download.manager.showWhenStarting", False)
+        options.set_preference("browser.helperApps.alwaysAsk.force", False)
+        options.set_preference("browser.download.manager.useWindow", False)
+        options.set_preference("browser.download.manager.focusWhenStarting", False)
+        options.set_preference("browser.download.manager.closeWhenDone", True)
+        self.browser = webdriver.Firefox(options=options)
+        self.browser.install_addon(os.path.abspath("ublock_origin-1.40.8-an+fx.xpi"))
 
     def search_for(self, query):
         logging.info("Navigating to https://free-mp3-download.net/")
@@ -84,11 +86,11 @@ class Downloader:
                                                          "3]/a/button")
         result_link.click()
         self.wait_engine.wait()
-        logging.info("Closing advertisement.")
-        webdriver.ActionChains(self.browser).send_keys(Keys.ESCAPE).perform()
-        WebDriverWait(self.browser, 10).until(
-            EC.url_contains("download.php")
-        )
+        # logging.info("Closing advertisement.")
+        # webdriver.ActionChains(self.browser).send_keys(Keys.ESCAPE).perform()
+        # WebDriverWait(self.browser, 10).until(
+        #     EC.url_contains("download.php")
+        # )
 
     def process_download_page(self):
         format_selector = self.browser.find_element_by_id(self.format)
