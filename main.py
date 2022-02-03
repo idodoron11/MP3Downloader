@@ -11,15 +11,23 @@ import numpy as np
 import logging
 import os
 import shutil
+import glob
 import deezer
 
+# settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+MINIMUM_WAIT_AFTER_DOWNLOAD = 20  # increase this number if you experience crushes
+WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine will require a long break
+SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
+LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
+DOWNLOAD_DIR = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
+LET_USER_CHOOSE_SEARCH_RESULT = False  # set it if you want to be more in control over the downloaded tracks
 
 
 class WaitEngine:
     def __init__(self):
         self.lastReset = self.nextReset = None
-        self.resetInterval = 15
+        self.resetInterval = WAIT_ENGINE_DEFAULT_RESET_INTERMAL
         self.bypassWait = False
         self.lastPause = None
         self.reset()
@@ -45,14 +53,14 @@ class WaitEngine:
             logging.info(f"Waiting 3 seconds.")
             sleep(3)
         elif current_time >= self.nextReset:
-            # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
-            penalty = max(minimum, np.random.gamma(6, 60))
+            k, theta = LONG_WAIT_GAMMA_PARAMETERS
+            penalty = max(minimum, np.random.gamma(k, theta))
             logging.info(f"Waiting {penalty} seconds.")
             sleep(penalty)
             self.reset()
         else:
-            # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
-            penalty = max(minimum, np.random.gamma(2, 2.2))
+            k, theta = SHORT_WAIT_GAMMA_PARAMETERS
+            penalty = max(minimum, np.random.gamma(k, theta))
             logging.info(f"Waiting {penalty} seconds.")
             sleep(penalty)
 
@@ -67,7 +75,7 @@ class Downloader:
             self.format = "mp3"
         logging.info("Opening a new browser window")
         options = Options()
-        self.download_path = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
+        self.download_path = DOWNLOAD_DIR
         options.set_preference("browser.download.dir", self.download_path)
         options.set_preference("browser.download.folderList", 2)
         content_types = "audio/x-flac;audio/flac;application/flac;audio/x-ogg-flac; audio/x-oggflac; audio/mp3; " \
@@ -118,13 +126,18 @@ class Downloader:
         download_btn = self.browser.find_element_by_class_name("dl")
         self.wait_engine.wait()
         download_btn.click()
-        self.wait_engine.wait(15)
+        self.wait_engine.wait(MINIMUM_WAIT_AFTER_DOWNLOAD)
 
     def download(self, query):
         self.wait_engine.resume()
         self.search_for(query)
         try:
-            self.choose_first_result()
+            if LET_USER_CHOOSE_SEARCH_RESULT:
+                input("Please choose the track you want to download. If I were you, i'd choose the first result.\n"
+                      "Press ENTER after your selection.")
+                self.wait_engine.wait()
+            else:
+                self.choose_first_result()
             self.process_download_page()
         except selenium.common.exceptions.NoSuchElementException:
             logging.error(f"Could not download {query}.")
@@ -132,7 +145,7 @@ class Downloader:
             self.wait_engine.pause()
 
     def download_list(self, list):
-        for item in list:
+        for index, item in enumerate(list):
             self.download(item)
 
     def tidy_up_downloaded_files(self, subfolder1, subfolder2):
@@ -142,10 +155,13 @@ class Downloader:
         target_dir = os.path.join(target_dir, subfolder2)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
-        for filename in os.listdir(self.download_path):
-            filepath = os.path.join(self.download_path, filename)
-            if os.path.isfile(filepath):
-                shutil.move(filepath, target_dir)
+        files = glob.glob(os.path.join(self.download_path, "*.*"))
+        files = [(os.path.basename(filepath), filepath) for filepath in files]
+        files.sort(key=lambda item: os.path.getmtime(item[1]))
+        for index, (filename, filepath) in enumerate(files):
+            new_filepath = os.path.join(self.download_path, f"{index + 1:02} {filename}")
+            shutil.move(filepath, new_filepath)
+            shutil.move(new_filepath, target_dir)
 
 
 def process_deezer_url(url):
