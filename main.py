@@ -120,8 +120,10 @@ class Downloader:
         if len(captcha) > 0:
             captcha = captcha[0]
             if captcha.is_displayed():
+                self.wait_engine.pause()
                 input("Please solve the CAPTCHA challenge before proceeding.\n"
                       "Press ENTER to proceed.")
+                self.wait_engine.resume()
         # format_selector.click()
         download_btn = self.browser.find_element_by_class_name("dl")
         self.wait_engine.wait()
@@ -133,8 +135,10 @@ class Downloader:
         self.search_for(query)
         try:
             if LET_USER_CHOOSE_SEARCH_RESULT:
+                self.wait_engine.pause()
                 input("Please choose the track you want to download. If I were you, i'd choose the first result.\n"
                       "Press ENTER after your selection.")
+                self.wait_engine.resume()
                 self.wait_engine.wait()
             else:
                 self.choose_first_result()
