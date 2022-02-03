@@ -136,10 +136,15 @@ def process_deezer_url(url):
 
 
 def main():
-    deezer_url = input("Enter a deezer url: ")
-    song_list = process_deezer_url(deezer_url)
-    downloader = Downloader("flac")
-    downloader.download_list(song_list)
+    format = input("Choose a format (mp3 / flac): ")
+    downloader = Downloader(format)
 
+    while 1:
+        deezer_url = input("Enter a deezer url: ")
+        song_list = process_deezer_url(deezer_url)
+        downloader.download_list(song_list)
+        stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
+        if stay_in_loop.lower() == "no":
+            break
 
 main()
