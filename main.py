@@ -50,8 +50,8 @@ class WaitEngine:
             return
         current_time = datetime.datetime.now()
         if self.bypassWait:
-            logging.info(f"Waiting 3 seconds.")
-            sleep(3)
+            logging.info(f"Waiting {minimum} seconds.")
+            sleep(minimum)
         elif current_time >= self.nextReset:
             k, theta = LONG_WAIT_GAMMA_PARAMETERS
             penalty = max(minimum, np.random.gamma(k, theta))
@@ -69,6 +69,7 @@ class Downloader:
     def __init__(self, format="mp3"):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
+        #self.wait_engine.bypassWait = True # uncomment to prevent waiting between actions
         if format in ["flac", "mp3"]:
             self.format = format
         else:
