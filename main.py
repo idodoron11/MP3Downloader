@@ -22,13 +22,13 @@ SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
 DOWNLOAD_DIR = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
 USET_CHOISE_TIMEOUT = 10  # how much time the user is given to choose a search result manually
+BYPASS_WAIT = True  # determines whether the wait engine should wait between actions
 
 
 class WaitEngine:
     def __init__(self):
         self.lastReset = self.nextReset = None
         self.resetInterval = WAIT_ENGINE_DEFAULT_RESET_INTERMAL
-        self.bypassWait = False
         self.lastPause = None
         self.reset()
 
@@ -51,7 +51,7 @@ class WaitEngine:
         if message is not None and message != "":
             print(message)
         current_time = datetime.datetime.now()
-        if self.bypassWait:
+        if BYPASS_WAIT:
             logging.info(f"Waiting {minimum} seconds.")
             sleep(minimum)
         elif current_time >= self.nextReset:
@@ -71,7 +71,6 @@ class Downloader:
     def __init__(self, format="mp3"):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
-        # self.wait_engine.bypassWait = True # uncomment to prevent waiting between actions
         if format in ["flac", "mp3"]:
             self.format = format
         else:
@@ -108,9 +107,6 @@ class Downloader:
         self.wait_engine.wait()
         result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
                                                          "3]/a/button")
-        link_row = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]")
-        self.browser.execute_script("arguments[0].setAttribute(argument[1], argument[2])", link_row, "style",
-                                    "background: orange;")
         result_link.click()
         self.wait_engine.wait()
         # logging.info("Closing advertisement.")
