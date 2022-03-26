@@ -21,7 +21,7 @@ WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine
 SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
 DOWNLOAD_DIR = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
-LET_USER_CHOOSE_SEARCH_RESULT = False  # set it if you want to be more in control over the downloaded tracks
+USET_CHOISE_TIMEOUT = 10  # how much time the user is given to choose a search result manually
 
 
 class WaitEngine:
@@ -35,7 +35,7 @@ class WaitEngine:
     def reset(self):
         self.lastPause = self.lastReset = datetime.datetime.now()
         self.nextReset = self.lastReset + datetime.timedelta(minutes=self.resetInterval)
-        logging.info(f"Wait engine was reset. Next reset will be in {self.resetInterval} minutes.")
+        logging.info(f"Wait engine has been reset. Next reset will be in {self.resetInterval} minutes.")
 
     def pause(self):
         self.lastPause = datetime.datetime.now()
@@ -45,9 +45,11 @@ class WaitEngine:
         self.nextReset += delta
         self.lastPause = None
 
-    def wait(self, minimum = 0):
+    def wait(self, minimum=0, message=""):
         if self.lastPause is not None:
             return
+        if message is not None and message != "":
+            print(message)
         current_time = datetime.datetime.now()
         if self.bypassWait:
             logging.info(f"Waiting {minimum} seconds.")
@@ -69,7 +71,7 @@ class Downloader:
     def __init__(self, format="mp3"):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
-        #self.wait_engine.bypassWait = True # uncomment to prevent waiting between actions
+        # self.wait_engine.bypassWait = True # uncomment to prevent waiting between actions
         if format in ["flac", "mp3"]:
             self.format = format
         else:
@@ -106,6 +108,9 @@ class Downloader:
         self.wait_engine.wait()
         result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
                                                          "3]/a/button")
+        link_row = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]")
+        self.browser.execute_script("arguments[0].setAttribute(argument[1], argument[2])", link_row, "style",
+                                    "background: orange;")
         result_link.click()
         self.wait_engine.wait()
         # logging.info("Closing advertisement.")
@@ -135,13 +140,9 @@ class Downloader:
         self.wait_engine.resume()
         self.search_for(query)
         try:
-            if LET_USER_CHOOSE_SEARCH_RESULT:
-                self.wait_engine.pause()
-                input("Please choose the track you want to download. If I were you, i'd choose the first result.\n"
-                      "Press ENTER after your selection.")
-                self.wait_engine.resume()
-                self.wait_engine.wait()
-            else:
+            self.wait_engine.wait(USET_CHOISE_TIMEOUT, f"You have a {USET_CHOISE_TIMEOUT} seconds opportunity to "
+                                                       f"manually choose which song to download.")
+            if not self.browser.current_url.startswith("https://free-mp3-download.net/download.php"):
                 self.choose_first_result()
             self.process_download_page()
         except selenium.common.exceptions.NoSuchElementException:
@@ -175,7 +176,8 @@ def process_deezer_url(url):
         album_id = int(url[len("https://www.deezer.com/us/album/"):])
         album = client.get_album(album_id)
         artist = album.get_artist()
-        return artist.name, album.title, [f"{artist.name} - {track.title}" for track in client.get_album(album_id).get_tracks()]
+        return artist.name, album.title, [f"{artist.name} - {track.title}" for track in
+                                          client.get_album(album_id).get_tracks()]
     elif url.startswith("https://www.deezer.com/us/track/"):
         track_id = int(url[len("https://www.deezer.com/us/track/"):])
         track = client.get_track(track_id)
@@ -185,7 +187,8 @@ def process_deezer_url(url):
     elif url.startswith("https://www.deezer.com/us/playlist/"):
         playlist_id = int(url[len("https://www.deezer.com/us/playlist/"):])
         playlist = client.get_playlist(playlist_id)
-        return "Playlists", playlist.title, [f"{track.get_artist().name} - {track.title}" for track in playlist.get_tracks()]
+        return "Playlists", playlist.title, [f"{track.get_artist().name} - {track.title}" for track in
+                                             playlist.get_tracks()]
 
 
 def main():
@@ -205,4 +208,3 @@ def main():
 
 
 main()
-
