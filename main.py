@@ -16,7 +16,7 @@ import deezer
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-MINIMUM_WAIT_AFTER_DOWNLOAD = 20  # increase this number if you experience crushes
+MINIMUM_WAIT_AFTER_DOWNLOAD = 10  # increase this number if you experience crushes
 WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine will require a long break
 SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
@@ -96,17 +96,17 @@ class Downloader:
         logging.info("Navigating to https://free-mp3-download.net/")
         self.browser.get("https://free-mp3-download.net/")
         self.wait_engine.wait()
-        search_box = self.browser.find_element_by_id("q")
+        search_box = self.browser.find_element(By.ID, "q")
         search_box.clear()
         search_box.send_keys(query)
-        search_btn = self.browser.find_element_by_id("snd")
+        search_btn = self.browser.find_element(By.ID, "snd")
         logging.info(f"Searching for {query}.")
         search_btn.click()
 
     def choose_first_result(self):
         self.wait_engine.wait()
-        result_link = self.browser.find_element_by_xpath("/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
-                                                         "3]/a/button")
+        result_link = self.browser.find_element(By.XPATH, "/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
+                                                          "3]/a/button")
         result_link.click()
         self.wait_engine.wait()
         # logging.info("Closing advertisement.")
@@ -116,9 +116,9 @@ class Downloader:
         # )
 
     def process_download_page(self):
-        format_selector = self.browser.find_element_by_id(self.format)
+        format_selector = self.browser.find_element(By.ID, self.format)
         self.browser.execute_script("arguments[0].click();", format_selector)
-        captcha = self.browser.find_elements_by_id("captcha")
+        captcha = self.browser.find_elements(By.ID, "captcha")
         if len(captcha) > 0:
             captcha = captcha[0]
             if captcha.is_displayed():
@@ -127,7 +127,7 @@ class Downloader:
                       "Press ENTER to proceed.")
                 self.wait_engine.resume()
         # format_selector.click()
-        download_btn = self.browser.find_element_by_class_name("dl")
+        download_btn = self.browser.find_element(By.CLASS_NAME, "dl")
         self.wait_engine.wait()
         download_btn.click()
         self.wait_engine.wait(MINIMUM_WAIT_AFTER_DOWNLOAD)
