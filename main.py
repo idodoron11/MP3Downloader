@@ -16,7 +16,7 @@ import deezer
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-MINIMUM_WAIT_AFTER_DOWNLOAD = 10  # increase this number if you experience crushes
+MINIMUM_WAIT_AFTER_DOWNLOAD = 25  # increase this number if you experience crushes
 WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine will require a long break
 SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
@@ -101,6 +101,10 @@ class Downloader:
         search_box.send_keys(query)
         search_btn = self.browser.find_element(By.ID, "snd")
         logging.info(f"Searching for {query}.")
+        vpn_checkbox = self.browser.find_element(By.ID, "useVPN")
+        if not vpn_checkbox.is_selected():
+            # vpn_checkbox.click()
+            self.browser.execute_script("arguments[0].click();", vpn_checkbox)
         search_btn.click()
 
     def choose_first_result(self):
