@@ -13,6 +13,8 @@ import os
 import shutil
 import glob
 import deezer
+from pathlib import Path
+import re
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -20,7 +22,8 @@ MINIMUM_WAIT_AFTER_DOWNLOAD = 25  # increase this number if you experience crush
 WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine will require a long break
 SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
-DOWNLOAD_DIR = os.path.join(os.environ['USERPROFILE'], "Downloads", "Music")
+_HOME_DIR = Path.home()
+DOWNLOAD_DIR = os.path.join(_HOME_DIR, "Downloads", "Music")
 USET_CHOISE_TIMEOUT = 10  # how much time the user is given to choose a search result manually
 BYPASS_WAIT = True  # determines whether the wait engine should wait between actions
 
@@ -172,20 +175,25 @@ class Downloader:
 
 def process_deezer_url(url):
     client = deezer.Client()
-    if url.startswith("https://www.deezer.com/us/album/"):
-        album_id = int(url[len("https://www.deezer.com/us/album/"):])
+    match = re.match("^(https:\/\/www\.deezer\.com\/[^\/]*\/)(playlist|album|track)\/(\d*)", url)
+    if not match:
+        raise Exception("Invalid URL")
+    urlType = match.group(2)
+    urlId = match.group(3)
+    if urlType == "album":
+        album_id = urlId
         album = client.get_album(album_id)
         artist = album.get_artist()
         return artist.name, album.title, [f"{artist.name} - {track.title}" for track in
                                           client.get_album(album_id).get_tracks()]
-    elif url.startswith("https://www.deezer.com/us/track/"):
-        track_id = int(url[len("https://www.deezer.com/us/track/"):])
+    elif urlType == "track":
+        track_id = urlId
         track = client.get_track(track_id)
         artist = track.get_artist()
         album = track.get_album()
         return artist.name, album.title, [f"{artist.name} - {track.title}"]
-    elif url.startswith("https://www.deezer.com/us/playlist/"):
-        playlist_id = int(url[len("https://www.deezer.com/us/playlist/"):])
+    elif urlType == "playlist":
+        playlist_id = urlId
         playlist = client.get_playlist(playlist_id)
         return "Playlists", playlist.title, [f"{track.get_artist().name} - {track.title}" for track in
                                              playlist.get_tracks()]
