@@ -19,13 +19,11 @@ import re
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-MINIMUM_WAIT_AFTER_DOWNLOAD = 25  # increase this number if you experience crushes
 WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine will require a long break
 SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
 _HOME_DIR = Path.home()
 DOWNLOAD_DIR = os.path.join(_HOME_DIR, "Downloads", "Music")
-USER_CHOISE_TIMEOUT = 10  # how much time the user is given to choose a search result manually
 BYPASS_WAIT = True  # determines whether the wait engine should wait between actions
 
 
