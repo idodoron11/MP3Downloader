@@ -1,8 +1,7 @@
+import traceback
 import selenium.common.exceptions
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from time import sleep
@@ -24,7 +23,7 @@ SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
 _HOME_DIR = Path.home()
 DOWNLOAD_DIR = os.path.join(_HOME_DIR, "Downloads", "Music")
-USET_CHOISE_TIMEOUT = 10  # how much time the user is given to choose a search result manually
+USER_CHOISE_TIMEOUT = 10  # how much time the user is given to choose a search result manually
 BYPASS_WAIT = True  # determines whether the wait engine should wait between actions
 
 
@@ -78,37 +77,31 @@ class Downloader:
             self.format = format
         else:
             self.format = "mp3"
-        logging.info("Opening a new browser window")
-        options = Options()
-        self.download_path = DOWNLOAD_DIR
-        options.set_preference("browser.download.dir", self.download_path)
-        options.set_preference("browser.download.folderList", 2)
-        content_types = "audio/x-flac;audio/flac;application/flac;audio/x-ogg-flac; audio/x-oggflac; audio/mp3; " \
-                        "audio/mpeg; audio/mpeg3; audio/mpg; audio/x-mp3; audio/x-mpeg; audio/x-mpeg3; " \
-                        "audio/x-mpegaudio; audio/x-mpg; "
-        options.set_preference("browser.helperApps.neverAsk.saveToDisk", content_types)
-        options.set_preference("browser.download.manager.showWhenStarting", False)
-        options.set_preference("browser.helperApps.alwaysAsk.force", False)
-        options.set_preference("browser.download.manager.useWindow", False)
-        options.set_preference("browser.download.manager.focusWhenStarting", False)
-        options.set_preference("browser.download.manager.closeWhenDone", True)
-        self.browser = webdriver.Firefox(options=options)
-        self.browser.install_addon(os.path.abspath("ublock_origin-1.40.8-an+fx.xpi"))
 
-    def search_for(self, query):
-        logging.info("Navigating to https://free-mp3-download.net/")
+        logging.info("Opening a new browser window")
+        self.download_path = DOWNLOAD_DIR
+        options = webdriver.ChromeOptions()
+        options.add_experimental_option("prefs", {
+            "download.default_directory": self.download_path
+        })
+        self.browser = webdriver.Chrome(options=options)
+
+    def open_download_page(self, track_id):
+        logging.info("Going back to homepage")
         self.browser.get("https://free-mp3-download.net/")
-        self.wait_engine.wait()
-        search_box = self.browser.find_element(By.ID, "q")
-        search_box.clear()
-        search_box.send_keys(query)
-        search_btn = self.browser.find_element(By.ID, "snd")
-        logging.info(f"Searching for {query}.")
-        vpn_checkbox = self.browser.find_element(By.ID, "useVPN")
-        if not vpn_checkbox.is_selected():
-            # vpn_checkbox.click()
-            self.browser.execute_script("arguments[0].click();", vpn_checkbox)
-        search_btn.click()
+        try:
+            WebDriverWait(self.browser, 30).until(
+                EC.presence_of_element_located((By.XPATH, '//button[@id="snd"]'))
+            )
+            logging.info(f"Opening the download page of track {track_id}")
+            self.browser.execute_script(f'window.location.href = "https://free-mp3-download.net/download.php?id={track_id}"')
+            logging.debug("Waiting for page load")
+            WebDriverWait(self.browser, 30).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "dl"))
+            )
+        except Exception as e:
+            logging.error("Failed to load the download page")
+            logging.error(traceback.format_exc())
 
     def choose_first_result(self):
         self.wait_engine.wait()
@@ -139,17 +132,13 @@ class Downloader:
         download_btn.click()
         self.wait_engine.wait(MINIMUM_WAIT_AFTER_DOWNLOAD)
 
-    def download(self, query):
+    def download(self, track_id):
         self.wait_engine.resume()
-        self.search_for(query)
+        self.open_download_page(track_id)
         try:
-            self.wait_engine.wait(USET_CHOISE_TIMEOUT, f"You have a {USET_CHOISE_TIMEOUT} seconds opportunity to "
-                                                       f"manually choose which song to download.")
-            if not self.browser.current_url.startswith("https://free-mp3-download.net/download.php"):
-                self.choose_first_result()
             self.process_download_page()
         except selenium.common.exceptions.NoSuchElementException:
-            logging.error(f"Could not download {query}.")
+            logging.error(f"Could not download {track_id}.")
         finally:
             self.wait_engine.pause()
 
@@ -184,18 +173,18 @@ def process_deezer_url(url):
         album_id = urlId
         album = client.get_album(album_id)
         artist = album.get_artist()
-        return artist.name, album.title, [f"{artist.name} - {track.title}" for track in
+        return artist.name, album.title, [track.id for track in
                                           client.get_album(album_id).get_tracks()]
     elif urlType == "track":
         track_id = urlId
         track = client.get_track(track_id)
         artist = track.get_artist()
         album = track.get_album()
-        return artist.name, album.title, [f"{artist.name} - {track.title}"]
+        return artist.name, album.title, [track_id]
     elif urlType == "playlist":
         playlist_id = urlId
         playlist = client.get_playlist(playlist_id)
-        return "Playlists", playlist.title, [f"{track.get_artist().name} - {track.title}" for track in
+        return "Playlists", playlist.title, [track.id for track in
                                              playlist.get_tracks()]
 
 
@@ -205,8 +194,8 @@ def main():
 
     while 1:
         deezer_url = input("Enter a deezer url: ")
-        artist, album, song_list = process_deezer_url(deezer_url)
-        downloader.download_list(song_list)
+        artist, album, song_ids = process_deezer_url(deezer_url)
+        downloader.download_list(song_ids)
         downloader.tidy_up_downloaded_files(artist, album)
         stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
         if stay_in_loop.lower() == "no":
