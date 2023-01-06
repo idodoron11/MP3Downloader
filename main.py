@@ -147,6 +147,7 @@ class Downloader:
             new_filepath = os.path.join(target_dir, f"{track.disk_number}-{track.track_position:02} {track.artist.name} - {track.title}.{self.format}")
             shutil.move(filepath, new_filepath)
             logging.info(f"Track {track.id} has been saved to {new_filepath}")
+            return new_filepath
 
         def on_download_failure():
             raise Exception("Download failure")
@@ -155,16 +156,22 @@ class Downloader:
         self.open_download_page(track)
         try:
             self.process_download_page()
-            self.wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
+            filepath = self.wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
             logging.error(f"Could not download {track.artist.name} - {track.title}.")
             logging.error(traceback.format_exc())
         finally:
             self.wait_engine.pause()
+        if filepath is not None:
+            return filepath
 
     def download_tracks(self, track_list):
+        track_map = dict()
         for index, track in enumerate(track_list):
-            self.download(track)
+            filepath = self.download(track)
+            if filepath is not None:
+                track_map[filepath] = track
+        return track_map
 
 
 def process_deezer_url(url):
@@ -199,7 +206,8 @@ def main():
     while 1:
         deezer_url = input("Enter a deezer url: ") if is_interactive else sys.argv[2]
         artist, album, tracks = process_deezer_url(deezer_url)
-        downloader.download_tracks(tracks)
+        downloaded_files = downloader.download_tracks(tracks)
+        # TODO: add metadata tags to the downloaded files
         if not is_interactive:
             break
         stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
