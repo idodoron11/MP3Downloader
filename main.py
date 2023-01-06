@@ -103,18 +103,6 @@ class Downloader:
             logging.error("Failed to load the download page")
             logging.error(traceback.format_exc())
 
-    def choose_first_result(self):
-        self.wait_engine.wait()
-        result_link = self.browser.find_element(By.XPATH, "/html/body/main/div/div[2]/div/table/tbody/tr[1]/td["
-                                                          "3]/a/button")
-        result_link.click()
-        self.wait_engine.wait()
-        # logging.info("Closing advertisement.")
-        # webdriver.ActionChains(self.browser).send_keys(Keys.ESCAPE).perform()
-        # WebDriverWait(self.browser, 10).until(
-        #     EC.url_contains("download.php")
-        # )
-
     def process_download_page(self):
         format_selector = self.browser.find_element(By.ID, self.format)
         self.browser.execute_script("arguments[0].click();", format_selector)
@@ -130,7 +118,6 @@ class Downloader:
         download_btn = self.browser.find_element(By.CLASS_NAME, "dl")
         self.wait_engine.wait()
         download_btn.click()
-
 
     def wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
         logging.info("Waiting for download completion")
