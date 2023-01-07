@@ -10,7 +10,7 @@ import logging
 
 
 class TagsStruct:
-    def __int__(self):
+    def __init__(self):
         self.title = None
         self.artists = None
         self.album_artist = None
