@@ -2,6 +2,7 @@ import sys
 import time
 import traceback
 import selenium.common.exceptions
+from deezer import Track
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -16,6 +17,7 @@ import glob
 import deezer
 from pathlib import Path
 import re
+from tagger import DeezerTagger
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -198,6 +200,18 @@ def process_deezer_url(url):
         return "Playlists", playlist.title, playlist.get_tracks()
 
 
+
+def tag_downloaded_files(downloaded_files: dict[str, Track]):
+    tagger = DeezerTagger()
+    for filepath, track in downloaded_files.items():
+        try:
+            tagger.tag(filepath, track)
+            tagger.commit()
+        except:
+            logging.error(f"Could not tag {filepath}")
+            logging.error(traceback.format_exc())
+            tagger.rollback()
+
 def main():
     is_interactive = len(sys.argv) != 3
     user_format = input("Choose a format (mp3 / flac): ") if is_interactive else sys.argv[1]
@@ -207,7 +221,7 @@ def main():
         deezer_url = input("Enter a deezer url: ") if is_interactive else sys.argv[2]
         artist, album, tracks = process_deezer_url(deezer_url)
         downloaded_files = downloader.download_tracks(tracks)
-        # TODO: add metadata tags to the downloaded files
+        tag_downloaded_files(downloaded_files)
         if not is_interactive:
             break
         stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
