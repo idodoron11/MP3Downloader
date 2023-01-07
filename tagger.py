@@ -18,10 +18,12 @@ class TagsStruct:
         self.track_position = None
         self.total_tracks = None
         self.disc_number = None
+        self.total_discs = None
         self.release_date = None
         self.album_artwork = None
         self.genres = None
         self.isrc = None
+        self.label = None
 
 
 class Tagger(ABC):
@@ -56,6 +58,7 @@ class DeezerTagger(Tagger):
             self._add_conventional_tag("tracknumber", tags.track_position)
             self._add_conventional_tag("totaltracks", tags.total_tracks)
             self._add_conventional_tag("discnumber", tags.disc_number)
+            self._add_conventional_tag("totaldiscs", tags.total_discs)
             self._add_conventional_tag("year", tags.release_date.strftime("%Y"))
             self._set_artwork(tags.album_artwork)
             self._add_conventional_tag("genre", tags.genres)
@@ -64,6 +67,7 @@ class DeezerTagger(Tagger):
 
             self._open_file("mutagen")
             self._add_custom_tag("date", tags.release_date.strftime("%Y-%m-%d"))
+            self._add_custom_tag("organization", tags.label)
             self._commit()
         except Exception as e:
             self._rollback()
@@ -126,10 +130,12 @@ class DeezerTagger(Tagger):
         tags.track_position = self.track.track_position
         tags.total_tracks = self.track.album.nb_tracks
         tags.disc_number = self.track.disk_number
+        tags.total_discs = max(track.disk_number for track in self.track.album.tracks)
         tags.release_date = self.track.album.release_date
         tags.album_artwork = self.track.album.cover_xl
         tags.genres = [genre.name for genre in self.track.album.genres]
         tags.isrc = self.track.isrc
+        tags.label = self.track.album.label
         return tags
 
     def _set_artwork(self, url):
