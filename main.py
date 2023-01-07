@@ -2,7 +2,7 @@ import sys
 import time
 import traceback
 import selenium.common.exceptions
-from deezer import Track
+from deezer import Track, Playlist
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -138,15 +138,24 @@ class Downloader:
             time.sleep(1)
         return failure_cb()
 
-    def download(self, track):
+    def download(self, track, playlist_name=None, track_position=None):
         def on_download_success(filepath, target_dir=None):
             artist = track.artist.name
             album = track.album.title
-            if target_dir is None:
-                target_dir = os.path.join(self.download_path, artist, album)
+            _, extension = os.path.splitext(filepath)
+            if target_dir is None and playlist_name is not None and track_position is not None:
+                target_dir = os.path.join(self.download_path, slugify(playlist_name))
+            elif target_dir is None:
+                target_dir = os.path.join(self.download_path, slugify(artist), slugify(album))
             if not os.path.exists(target_dir):
                 os.makedirs(target_dir)
-            new_filepath = os.path.join(target_dir, f"{track.disk_number}-{track.track_position:02} {track.artist.name} - {track.title}.{self.format}")
+            if track_position is None:
+                position = f"{track.disk_number}-{track.track_position:02}"
+            else:
+                position = f"{track_position:02}"
+            new_filename = f"{position} {track.artist.name} - {track.title}"
+            new_filename = slugify(new_filename)
+            new_filepath = os.path.join(target_dir, f"{new_filename}{extension}")
             shutil.move(filepath, new_filepath)
             logging.info(f"Track {track.id} has been saved to {new_filepath}")
             return new_filepath
@@ -169,10 +178,16 @@ class Downloader:
 
     def download_tracks(self, track_list):
         track_map = dict()
-        for index, track in enumerate(track_list):
-            filepath = self.download(track)
-            if filepath is not None:
-                track_map[filepath] = track
+        if isinstance(track_list, Playlist):
+            for index, track in enumerate(track_list.tracks):
+                filepath = self.download(track, playlist_name=track_list.title, track_position=index+1)
+                if filepath is not None:
+                    track_map[filepath] = track
+        else :
+            for index, track in enumerate(track_list):
+                filepath = self.download(track)
+                if filepath is not None:
+                    track_map[filepath] = track
         return track_map
 
 
@@ -186,18 +201,15 @@ def process_deezer_url(url):
     if urlType == "album":
         album_id = urlId
         album = client.get_album(album_id)
-        artist = album.get_artist()
-        return artist.name, album.title, client.get_album(album_id).get_tracks()
+        return album.get_tracks()
     elif urlType == "track":
         track_id = urlId
         track = client.get_track(track_id)
-        artist = track.get_artist()
-        album = track.get_album()
-        return artist.name, album.title, track
+        return track
     elif urlType == "playlist":
         playlist_id = urlId
         playlist = client.get_playlist(playlist_id)
-        return "Playlists", playlist.title, playlist.get_tracks()
+        return playlist
 
 
 
@@ -205,12 +217,23 @@ def tag_downloaded_files(downloaded_files: dict[str, Track]):
     tagger = DeezerTagger()
     for filepath, track in downloaded_files.items():
         try:
+            filename = os.path.basename(filepath)
+            logging.info(f"Adding metadata tags to {filename}")
             tagger.tag(filepath, track)
             tagger._commit()
         except:
             logging.error(f"Could not tag {filepath}")
             logging.error(traceback.format_exc())
             tagger._rollback()
+
+
+def slugify(string):
+    def predicate(char):
+        return str.isspace(char) or char == '-' or str.isalnum(char)
+
+    f = filter(predicate, string)
+    return "".join(f)
+
 
 def main():
     is_interactive = len(sys.argv) != 3
@@ -219,7 +242,7 @@ def main():
 
     while 1:
         deezer_url = input("Enter a deezer url: ") if is_interactive else sys.argv[2]
-        artist, album, tracks = process_deezer_url(deezer_url)
+        tracks = process_deezer_url(deezer_url)
         downloaded_files = downloader.download_tracks(tracks)
         tag_downloaded_files(downloaded_files)
         if not is_interactive:
