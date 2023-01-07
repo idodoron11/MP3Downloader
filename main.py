@@ -72,13 +72,13 @@ class WaitEngine:
 
 
 class Downloader:
-    def __init__(self, format="mp3"):
+    def __init__(self, format="mp3-320"):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
-        if format in ["flac", "mp3"]:
+        if format in ["flac", "mp3-128", "mp3-320"]:
             self.format = format
         else:
-            self.format = "mp3"
+            self.format = "mp3-320"
 
         logging.info("Opening a new browser window")
         self.download_path = DOWNLOAD_DIR
@@ -159,13 +159,13 @@ class Downloader:
         try:
             self.process_download_page()
             filepath = self.wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
+            if filepath is not None:
+                return filepath
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
             logging.error(f"Could not download {track.artist.name} - {track.title}.")
             logging.error(traceback.format_exc())
         finally:
             self.wait_engine.pause()
-        if filepath is not None:
-            return filepath
 
     def download_tracks(self, track_list):
         track_map = dict()
@@ -206,15 +206,15 @@ def tag_downloaded_files(downloaded_files: dict[str, Track]):
     for filepath, track in downloaded_files.items():
         try:
             tagger.tag(filepath, track)
-            tagger.commit()
+            tagger._commit()
         except:
             logging.error(f"Could not tag {filepath}")
             logging.error(traceback.format_exc())
-            tagger.rollback()
+            tagger._rollback()
 
 def main():
     is_interactive = len(sys.argv) != 3
-    user_format = input("Choose a format (mp3 / flac): ") if is_interactive else sys.argv[1]
+    user_format = input("Choose a format (mp3-128 / mp3-320 / flac): ") if is_interactive else sys.argv[1]
     downloader = Downloader(user_format)
 
     while 1:

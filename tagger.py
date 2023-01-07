@@ -1,12 +1,12 @@
 import io
 from abc import ABC, abstractmethod
-import deezer
+import mutagen
+from mutagen.flac import FLAC
+from mutagen.easyid3 import EasyID3
 from deezer import Track, Album, Artist
 import music_tag
 import requests
 import logging
-
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 
 class TagsStruct:
@@ -36,37 +36,59 @@ class DeezerTagger(Tagger):
         self.track = None
         self.file = None
         self.image_downloader = ImageDownloader()
+        self.tag_engine = "music_tag"
 
     def _set_state(self, filepath: str, track: Track):
         self.filepath = filepath
         self.track = track
-        self.rollback()
+        self.clear_tags()
 
     def tag(self, filepath: str, track: Track):
-        self._set_state(filepath, track)
-        tags = self.get_tags_from_track()
-        self.clear_tags()
-        self.override_tag("title", tags.title)
-        self.override_tag("artist", tags.artists)
-        self.override_tag("albumartist", tags.album_artist)
-        self.override_tag("album", tags.album)
-        self.override_tag("tracknumber", tags.track_position)
-        self.override_tag("totaltracks", tags.total_tracks)
-        self.override_tag("discnumber", tags.disc_number)
-        self.override_tag("year", tags.release_date.strftime("%Y-%m-%d"))
-        self._set_artwork(tags.album_artwork)
-        self.override_tag("genre", tags.genres)
-        self.override_tag("isrc", tags.isrc)
+        try:
+            self._set_state(filepath, track)
+            tags = self.get_tags_from_track()
 
-    def commit(self):
+            self._open_file("music_tag")
+            self._add_conventional_tag("title", tags.title)
+            self._add_conventional_tag("artist", tags.artists)
+            self._add_conventional_tag("albumartist", tags.album_artist)
+            self._add_conventional_tag("album", tags.album)
+            self._add_conventional_tag("tracknumber", tags.track_position)
+            self._add_conventional_tag("totaltracks", tags.total_tracks)
+            self._add_conventional_tag("discnumber", tags.disc_number)
+            self._add_conventional_tag("year", tags.release_date.strftime("%Y"))
+            self._set_artwork(tags.album_artwork)
+            self._add_conventional_tag("genre", tags.genres)
+            self._add_conventional_tag("isrc", tags.isrc)
+            self._commit()
+
+            self._open_file("mutagen")
+            self._add_custom_tag("date", tags.release_date.strftime("%Y-%m-%d"))
+            self._commit()
+        except Exception as e:
+            self._rollback()
+            raise e
+
+    def _commit(self):
         self.file.save()
 
-    def rollback(self):
-        self.file = music_tag.load_file(self.filepath)
+    def _rollback(self):
+        self._open_file(self.tag_engine)
 
-    def override_tag(self, tag, values, force=False):
-        self.file.remove_tag(tag)
-        if force:
+    def _open_file(self, tag_engine):
+        self.tag_engine = tag_engine
+        if tag_engine == "mutagen":
+            try:
+                self.file = EasyID3(self.filepath)
+            except:
+                self.file = mutagen.File(self.filepath)
+        elif tag_engine == "music_tag":
+            self.file = music_tag.load_file(self.filepath)
+
+    def _add_conventional_tag(self, tag, values, override=False, raw=False):
+        if override:
+            self.file.remove_tag(tag)
+        if raw:
             self.file.raw[tag] = values
         elif isinstance(values, list):
             for value in values:
@@ -74,9 +96,26 @@ class DeezerTagger(Tagger):
         else:
             self.file.set(tag, values)
 
+    def _add_custom_tag(self, tag, value):
+        if isinstance(value, list):
+            self.file[tag] = value
+        else:
+            if tag in self.file:
+                values = list(self.file[tag])
+                values.append(value)
+            else:
+                values = [value]
+            self.file[tag] = values
+
     def clear_tags(self):
-        for tag in filter(lambda x: not x.startswith('#'), self.file.tag_map):
-            self.file.remove_tag(tag)
+        orig_tag_engine = self.tag_engine
+        self._open_file("mutagen")
+        self.file.delete()
+        if isinstance(self.file, FLAC):
+            for picture in self.file.pictures:
+                picture.data = b''
+        self.file.save()
+        self.tag_engine = orig_tag_engine
 
     def get_tags_from_track(self) -> TagsStruct:
         tags = TagsStruct()
@@ -147,23 +186,3 @@ class ImageDownloader:
         else:
             logging.debug("Cache hit")
             return result
-
-
-deezer_client = deezer.Client()
-downloaded_files = dict()
-downloaded_files[
-    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-01 Avicii - The Days.flac'] = deezer_client.get_track(
-    90632835)
-downloaded_files[
-    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-02 Avicii - The Nights.flac'] = deezer_client.get_track(
-    90632837)
-downloaded_files[
-    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-03 Avicii - The Days (Henrik B Remix).flac'] = deezer_client.get_track(
-    90632839)
-downloaded_files[
-    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-04 Avicii - The Nights (Felix Jaehn Remix).flac'] = deezer_client.get_track(
-    90632841)
-tagger = DeezerTagger()
-for filepath, track in downloaded_files.items():
-    tagger.tag(filepath, track)
-    tagger.commit()
