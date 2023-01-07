@@ -1,12 +1,12 @@
 import io
 from abc import ABC, abstractmethod
-
 import deezer
 from deezer import Track, Album, Artist
 import music_tag
 import requests
-import shutil
-from PIL import Image
+import logging
+
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 
 class TagsStruct:
@@ -35,6 +35,7 @@ class DeezerTagger(Tagger):
         self.filepath = None
         self.track = None
         self.file = None
+        self.image_downloader = ImageDownloader()
 
     def _set_state(self, filepath: str, track: Track):
         self.filepath = filepath
@@ -44,6 +45,7 @@ class DeezerTagger(Tagger):
     def tag(self, filepath: str, track: Track):
         self._set_state(filepath, track)
         tags = self.get_tags_from_track()
+        self.clear_tags()
         self.override_tag("title", tags.title)
         self.override_tag("artist", tags.artists)
         self.override_tag("albumartist", tags.album_artist)
@@ -55,7 +57,6 @@ class DeezerTagger(Tagger):
         self._set_artwork(tags.album_artwork)
         self.override_tag("genre", tags.genres)
         self.override_tag("isrc", tags.isrc)
-
 
     def commit(self):
         self.file.save()
@@ -73,6 +74,10 @@ class DeezerTagger(Tagger):
         else:
             self.file.set(tag, values)
 
+    def clear_tags(self):
+        for tag in filter(lambda x: not x.startswith('#'), self.file.tag_map):
+            self.file.remove_tag(tag)
+
     def get_tags_from_track(self) -> TagsStruct:
         tags = TagsStruct()
         tags.title = self.track.title
@@ -89,17 +94,75 @@ class DeezerTagger(Tagger):
         return tags
 
     def _set_artwork(self, url):
-        r = requests.get(url, stream=True)
-        r.raw.decode_content = True
+        r = self.image_downloader.download(url)
         with io.BytesIO(r.content) as buf:
             self.file['artwork'] = buf.read()
 
+
+class Cache:
+    def __init__(self, size=5):
+        self.size = size
+        if self.size < 0:
+            self.size = 5
+        self.keys = [None for i in range(size)]
+        self.values = [None for i in range(size)]
+        self.head = -1
+
+    def search(self, key):
+        if self.head == -1:
+            return None
+        index = self.get_key_index(key)
+        if index != -1:
+            return self.values[index]
+        else:
+            return None
+
+    def get_key_index(self, key):
+        for i in range(self.size):
+            if key == self.keys[i]:
+                return i
+        return -1
+
+    def put(self, key, value):
+        index = self.get_key_index(key)
+        if index == -1:
+            index = (self.head + 1) % self.size
+        self.keys[index] = key
+        self.values[index] = value
+        self.head = (self.head + 1) % self.size
+
+
+class ImageDownloader:
+    def __init__(self):
+        self.image_cache = Cache(size=5)
+
+    def download(self, url):
+        result = self.image_cache.search(url)
+        if result is None:
+            logging.debug("Cache miss")
+            result = requests.get(url, stream=True)
+            result.raw.decode_content = True
+            self.image_cache.put(url, result)
+            return result
+        else:
+            logging.debug("Cache hit")
+            return result
+
+
 deezer_client = deezer.Client()
 downloaded_files = dict()
-downloaded_files['/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-01 Avicii - The Days.flac'] = deezer_client.get_track(90632835)
-downloaded_files['/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-02 Avicii - The Nights.flac'] = deezer_client.get_track(90632837)
-downloaded_files['/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-03 Avicii - The Days (Henrik B Remix).flac'] = deezer_client.get_track(90632839)
-downloaded_files['/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-04 Avicii - The Nights (Felix Jaehn Remix).flac'] = deezer_client.get_track(90632841)
+downloaded_files[
+    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-01 Avicii - The Days.flac'] = deezer_client.get_track(
+    90632835)
+downloaded_files[
+    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-02 Avicii - The Nights.flac'] = deezer_client.get_track(
+    90632837)
+downloaded_files[
+    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-03 Avicii - The Days (Henrik B Remix).flac'] = deezer_client.get_track(
+    90632839)
+downloaded_files[
+    '/Users/idodoron/Downloads/Music/Avicii/The Days / Nights (EP)/1-04 Avicii - The Nights (Felix Jaehn Remix).flac'] = deezer_client.get_track(
+    90632841)
 tagger = DeezerTagger()
 for filepath, track in downloaded_files.items():
     tagger.tag(filepath, track)
