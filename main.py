@@ -229,7 +229,8 @@ def tag_downloaded_files(downloaded_files: dict[str, Track]):
 
 def slugify(string):
     def predicate(char):
-        return str.isspace(char) or char == '-' or str.isalnum(char)
+        allow_list = "!@#$%^&()_+=,-';"
+        return str.isspace(char) or char in allow_list or str.isalnum(char)
 
     f = filter(predicate, string)
     return "".join(f)
