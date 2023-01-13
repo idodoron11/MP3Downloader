@@ -1,4 +1,5 @@
 import io
+import traceback
 from abc import ABC, abstractmethod
 import mutagen
 from mutagen.flac import FLAC
@@ -7,6 +8,8 @@ from deezer import Track, Album, Artist
 import music_tag
 import requests
 import logging
+
+from exceptions import TaggerException
 
 
 class TagsStruct:
@@ -71,7 +74,8 @@ class DeezerTagger(Tagger):
             self._commit()
         except Exception as e:
             self._rollback()
-            raise e
+            logging.error(traceback.format_exc())
+            raise TaggerException
 
     def _commit(self):
         self.file.save()

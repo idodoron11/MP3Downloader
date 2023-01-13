@@ -3,6 +3,7 @@ import time
 import traceback
 import selenium.common.exceptions
 from deezer import Track, Playlist
+from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -19,6 +20,8 @@ from pathlib import Path
 import re
 from tagger import DeezerTagger
 import ui_elements
+from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
+    InvalidInput
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -56,10 +59,14 @@ class WaitEngine:
         if message is not None and message != "":
             print(message)
         current_time = datetime.datetime.now()
+
         if BYPASS_WAIT:
-            logging.info(f"Waiting {minimum} seconds.")
-            sleep(minimum)
-        elif current_time >= self.nextReset:
+            if minimum > 0:
+                logging.info(f"Waiting {minimum} seconds.")
+                sleep(minimum)
+            return
+
+        if current_time >= self.nextReset:
             k, theta = LONG_WAIT_GAMMA_PARAMETERS
             penalty = max(minimum, np.random.gamma(k, theta))
             logging.info(f"Waiting {penalty} seconds.")
@@ -90,13 +97,12 @@ class Downloader:
 
     def set_format(self, format, bitrate):
         if format is None or format not in Downloader.supported_formats:
-            raise Exception("Unsupported format")
+            raise UnsupportedFormatException
         if format == "mp3":
             if bitrate not in ["128", "320"]:
-                raise Exception("Unsupported bitrate")
+                raise UnsupportedBitrateException
         elif format == "flac":
             bitrate = None
-            logging.warning("FLAC bitrate cannot be chosen")
         self.format = format
         self.bitrate = bitrate
 
@@ -123,7 +129,7 @@ class Downloader:
         elif self.format == "flac":
             return self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["flac_radio_btn"])
         else:
-            raise Exception("The requested format is unavailable")
+            raise UIException("The requested format is unavailable")
 
     def _process_download_page(self):
         format_selector = self._get_format_selector()
@@ -181,7 +187,7 @@ class Downloader:
             return new_filepath
 
         def on_download_failure():
-            raise Exception("Download failure")
+            raise DownloaderException("Download failure")
 
         self.wait_engine.resume()
         self._open_download_page(track)
@@ -216,21 +222,25 @@ def process_deezer_url(url):
     client = deezer.Client()
     match = re.match("^(https:\/\/www\.deezer\.com\/[^\/]*\/)(playlist|album|track)\/(\d*)", url)
     if not match:
-        raise Exception("Invalid URL")
+        raise InvalidInput("Invalid URL")
     urlType = match.group(2)
     urlId = match.group(3)
-    if urlType == "album":
-        album_id = urlId
-        album = client.get_album(album_id)
-        return album
-    elif urlType == "track":
-        track_id = urlId
-        track = client.get_track(track_id)
-        return track
-    elif urlType == "playlist":
-        playlist_id = urlId
-        playlist = client.get_playlist(playlist_id)
-        return playlist
+    try:
+        if urlType == "album":
+            album_id = urlId
+            album = client.get_album(album_id)
+            return album
+        elif urlType == "track":
+            track_id = urlId
+            track = client.get_track(track_id)
+            return track
+        elif urlType == "playlist":
+            playlist_id = urlId
+            playlist = client.get_playlist(playlist_id)
+            return playlist
+    except DeezerAPIException as e:
+        logging.error(traceback.format_exc())
+        raise DownloaderException("Cannot access the track(s) in the provided Deezer URL")
 
 
 
