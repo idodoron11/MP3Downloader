@@ -215,6 +215,12 @@ class Downloader:
             iterate_over = [track_list]
         elif isinstance(track_list, Album):
             iterate_over = track_list.tracks
+        elif isinstance(track_list, Artist):
+            albums = track_list.get_albums()
+            iterate_over = list()
+            for album in albums:
+                for track in album.tracks:
+                    iterate_over.append(track)
         else:
             raise DownloaderException("Unsupported Deezer entity")
 
@@ -227,7 +233,7 @@ class Downloader:
 
 def process_deezer_url(url):
     client = deezer.Client()
-    match = re.match("^(https:\/\/www\.deezer\.com\/[^\/]*\/)(playlist|album|track)\/(\d*)", url)
+    match = re.match("^(https:\/\/www\.deezer\.com\/[^\/]*\/)(playlist|album|track|artist)\/(\d*)", url)
     if not match:
         raise InvalidInput("Invalid URL")
     urlType = match.group(2)
@@ -245,6 +251,10 @@ def process_deezer_url(url):
             playlist_id = urlId
             playlist = client.get_playlist(playlist_id)
             return playlist
+        elif urlType == "artist":
+            artist_id = urlId
+            artist = client.get_artist(artist_id)
+            return artist
     except DeezerAPIException as e:
         logging.error(traceback.format_exc())
         raise DownloaderException("Cannot access the track(s) in the provided Deezer URL")
