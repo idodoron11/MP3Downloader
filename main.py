@@ -354,7 +354,7 @@ def main():
                 break
             if format is not None:
                 change_quality = input("Would you like to use the same format and bitrate? (yes / no): ")
-                if change_quality.lower() in ["yes", "y"]:
+                if change_quality.lower() not in ["yes", "y"]:
                     format = None
                     bitrate = None
     else:
