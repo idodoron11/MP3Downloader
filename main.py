@@ -18,6 +18,7 @@ import deezer
 from pathlib import Path
 import re
 from tagger import DeezerTagger
+import ui_elements
 
 # settings
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -72,13 +73,12 @@ class WaitEngine:
 
 
 class Downloader:
-    def __init__(self, format="mp3-320"):
+    supported_formats = ["mp3", "flac"]
+    def __init__(self):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
-        if format in ["flac", "mp3-128", "mp3-320"]:
-            self.format = format
-        else:
-            self.format = "mp3-320"
+        self.bitrate = "mp3"
+        self.format = "320"
 
         logging.info("Opening a new browser window")
         self.download_path = DOWNLOAD_DIR
@@ -88,27 +88,47 @@ class Downloader:
         })
         self.browser = webdriver.Chrome(options=options)
 
-    def open_download_page(self, track):
+    def set_format(self, format, bitrate):
+        if format is None or format not in Downloader.supported_formats:
+            raise Exception("Unsupported format")
+        if format == "mp3":
+            if bitrate not in ["128", "320"]:
+                raise Exception("Unsupported bitrate")
+        elif format == "flac":
+            bitrate = None
+            logging.warning("FLAC bitrate cannot be chosen")
+        self.format = format
+        self.bitrate = bitrate
+
+    def _open_download_page(self, track):
         logging.info("Going back to homepage")
         self.browser.get("https://free-mp3-download.net/")
         try:
             WebDriverWait(self.browser, 30).until(
-                EC.presence_of_element_located((By.XPATH, '//button[@id="snd"]'))
+                EC.presence_of_element_located(ui_elements.HOME_PAGE["search_btn"])
             )
             logging.info(f"Opening the download page of track {track.id}")
             self.browser.execute_script(f'window.location.href = "https://free-mp3-download.net/download.php?id={track.id}"')
             logging.debug("Waiting for page load")
             WebDriverWait(self.browser, 30).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "dl"))
+                EC.presence_of_element_located(ui_elements.DOWNLOAD_PAGE["download_btn"])
             )
         except Exception as e:
             logging.error("Failed to load the download page")
             logging.error(traceback.format_exc())
 
-    def process_download_page(self):
-        format_selector = self.browser.find_element(By.ID, self.format)
+    def _get_format_selector(self):
+        if self.format == "mp3":
+            return self.browser.find_element(*ui_elements.DOWNLOAD_PAGE[f"mp3_{self.bitrate}_radio_btn"])
+        elif self.format == "flac":
+            return self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["flac_radio_btn"])
+        else:
+            raise Exception("The requested format is unavailable")
+
+    def _process_download_page(self):
+        format_selector = self._get_format_selector()
         self.browser.execute_script("arguments[0].click();", format_selector)
-        captcha = self.browser.find_elements(By.ID, "captcha")
+        captcha = self.browser.find_elements(*ui_elements.DOWNLOAD_PAGE["captcha"])
         if len(captcha) > 0:
             captcha = captcha[0]
             if captcha.is_displayed():
@@ -117,11 +137,11 @@ class Downloader:
                       "Press ENTER to proceed.")
                 self.wait_engine.resume()
         # format_selector.click()
-        download_btn = self.browser.find_element(By.CLASS_NAME, "dl")
+        download_btn = self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["download_btn"])
         self.wait_engine.wait()
         download_btn.click()
 
-    def wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
+    def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
         logging.info("Waiting for download completion")
         wait_until = datetime.datetime.now() + datetime.timedelta(minutes=wait_time)
         while datetime.datetime.now() <= wait_until:
@@ -131,7 +151,7 @@ class Downloader:
             else:
                 latest_file = max(dir_content, key=os.path.getctime)
                 _, extension = os.path.splitext(latest_file)
-                if extension == ".crdownload":
+                if extension[1:] not in Downloader.supported_formats:
                     logging.debug("Download has not finished yet")
                 else:
                     return success_cb(latest_file)
@@ -164,10 +184,10 @@ class Downloader:
             raise Exception("Download failure")
 
         self.wait_engine.resume()
-        self.open_download_page(track)
+        self._open_download_page(track)
         try:
-            self.process_download_page()
-            filepath = self.wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
+            self._process_download_page()
+            filepath = self._wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
             if filepath is not None:
                 return filepath
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
@@ -179,15 +199,16 @@ class Downloader:
     def download_tracks(self, track_list):
         track_map = dict()
         if isinstance(track_list, Playlist):
-            for index, track in enumerate(track_list.tracks):
-                filepath = self.download(track, playlist_name=track_list.title, track_position=index+1)
-                if filepath is not None:
-                    track_map[filepath] = track
-        else :
-            for index, track in enumerate(track_list):
-                filepath = self.download(track)
-                if filepath is not None:
-                    track_map[filepath] = track
+            iterate_over = track_list.tracks
+        elif isinstance(track_list, Track):
+            iterate_over = [track_list]
+        else:
+            iterate_over = track_list.tracks
+
+        for index, track in enumerate(iterate_over):
+            filepath = self.download(track, playlist_name=track_list.title, track_position=index + 1)
+            if filepath is not None:
+                track_map[filepath] = track
         return track_map
 
 
@@ -201,7 +222,7 @@ def process_deezer_url(url):
     if urlType == "album":
         album_id = urlId
         album = client.get_album(album_id)
-        return album.get_tracks()
+        return album
     elif urlType == "track":
         track_id = urlId
         track = client.get_track(track_id)
@@ -236,23 +257,54 @@ def slugify(string):
     return "".join(f)
 
 
+def process_user_input(downloader, format, bitrate, deezer_url):
+    downloader.set_format(format, bitrate)
+    tracks = process_deezer_url(deezer_url)
+    downloaded_files = downloader.download_tracks(tracks)
+    tag_downloaded_files(downloaded_files)
+
+def interact_with_user(downloader, format=None, bitrate=None):
+    if format is None or bitrate is None:
+        format = input("Choose a format (mp3 / flac): ")
+        bitrate = ""
+        if format == "mp3":
+            bitrate = input("Choose bitrate (128 / 320): ")
+
+    deezer_url = input("Enter a deezer url: ")
+    process_user_input(downloader, format, bitrate, deezer_url)
+    return format, bitrate
+
+
 def main():
+    downloader = Downloader()
+
     is_interactive = len(sys.argv) != 3
-    user_format = input("Choose a format (mp3-128 / mp3-320 / flac): ") if is_interactive else sys.argv[1]
-    downloader = Downloader(user_format)
+    if is_interactive:
+        format = None
+        bitrate = None
+        while 1:
+            try:
+                format, bitrate = interact_with_user(downloader, format, bitrate)
+            except:
+                logging.error(traceback.format_exc())
+            time.sleep(2)
+            stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
+            if stay_in_loop.lower() not in ["yes", "y"]:
+                break
+            if format is not None:
+                change_quality = input("Would you like to use the same format and bitrate? (yes / no): ")
+                if change_quality.lower() in ["yes", "y"]:
+                    format = None
+                    bitrate = None
+    else:
+        format = sys.argv[1]
+        bitrate = None
+        if format.startswith("mp3-"):
+            bitrate = format[4:]
+            format = format[:3]
+        deezer_url = sys.argv[2]
+        process_user_input(downloader, format, bitrate, deezer_url)
 
-    while 1:
-        deezer_url = input("Enter a deezer url: ") if is_interactive else sys.argv[2]
-        tracks = process_deezer_url(deezer_url)
-        downloaded_files = downloader.download_tracks(tracks)
-        tag_downloaded_files(downloaded_files)
-        if not is_interactive:
-            break
-        stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
-        if stay_in_loop.lower() == "no":
-            break
-        elif stay_in_loop.lower() != "yes":
-            print("I'm assuming that was a \"yes\".")
 
-
-main()
+if __name__ == "__main__":
+    main()
