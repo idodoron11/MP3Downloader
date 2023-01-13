@@ -2,7 +2,7 @@ import sys
 import time
 import traceback
 import selenium.common.exceptions
-from deezer import Track, Playlist
+from deezer import Track, Playlist, Album, Artist
 from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -206,13 +206,20 @@ class Downloader:
         track_map = dict()
         if isinstance(track_list, Playlist):
             iterate_over = track_list.tracks
+            for index, track in enumerate(iterate_over):
+                filepath = self.download(track, playlist_name=track_list.title, track_position=index + 1)
+                if filepath is not None:
+                    track_map[filepath] = track
+            return
         elif isinstance(track_list, Track):
             iterate_over = [track_list]
-        else:
+        elif isinstance(track_list, Album):
             iterate_over = track_list.tracks
+        else:
+            raise DownloaderException("Unsupported Deezer entity")
 
         for index, track in enumerate(iterate_over):
-            filepath = self.download(track, playlist_name=track_list.title, track_position=index + 1)
+            filepath = self.download(track)
             if filepath is not None:
                 track_map[filepath] = track
         return track_map
