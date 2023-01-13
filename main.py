@@ -5,7 +5,6 @@ import selenium.common.exceptions
 from deezer import Track, Playlist, Album, Artist
 from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from time import sleep
@@ -18,6 +17,7 @@ import glob
 import deezer
 from pathlib import Path
 import re
+from tabulate import tabulate
 from tagger import DeezerTagger
 import ui_elements
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
@@ -233,11 +233,11 @@ class Downloader:
 
 def process_deezer_url(url):
     client = deezer.Client()
-    match = re.match("^(https:\/\/www\.deezer\.com\/[^\/]*\/)(playlist|album|track|artist)\/(\d*)", url)
+    match = re.match("^(https:\/\/www\.deezer\.com\/([^\/]*\/)?)(playlist|album|track|artist)\/(\d*)", url)
     if not match:
         raise InvalidInput("Invalid URL")
-    urlType = match.group(2)
-    urlId = match.group(3)
+    urlType = match.group(3)
+    urlId = match.group(4)
     try:
         if urlType == "album":
             album_id = urlId
@@ -284,11 +284,41 @@ def slugify(string):
     return "".join(f)
 
 
-def process_user_input(downloader, format, bitrate, deezer_url):
+def process_deezer_entity(downloader, format, bitrate, deezer_entity):
     downloader.set_format(format, bitrate)
-    tracks = process_deezer_url(deezer_url)
-    downloaded_files = downloader.download_tracks(tracks)
+    downloaded_files = downloader.download_tracks(deezer_entity)
     tag_downloaded_files(downloaded_files)
+
+def process_user_search(query):
+    print("What are we searching for?")
+    print("(1) artist")
+    print("(2) album")
+    print("(3) track")
+    type = input()
+    client = deezer.Client()
+    if type == "1" or type == "artist":
+        results = client.search_artists(query)
+        headers = ["Choice Number", "Artist"]
+        data = [(index + 1, artist.name) for index, artist in enumerate(results[:15])]
+    elif type == "2" or type == "album":
+        results = client.search_albums(query)
+        headers = ["Choice Number", "Artist", "Album", "Year"]
+        data = [(index + 1, album.artist.name, album.title, album.release_date.strftime("%Y")) for index, album in enumerate(results[:15])]
+    elif type == "3" or type == "track":
+        results = client.search(query)
+        headers = ["Choice Number", "Artist", "Title", "Track#", "Album", "Year"]
+        data = [(index + 1, track.artist.name, track.title, track.track_position, track.album.title, track.album.release_date.strftime("%Y")) for index, track in enumerate(results[:15])]
+    else:
+        raise InvalidInput
+
+    print(tabulate(data, headers=headers))
+    choice = input(f"Please choose the desired result by typing in its choice number: ")
+    if not choice.isdigit():
+        raise InvalidInput
+    choice = int(choice) - 1
+    if choice < 0 or choice >= len(data):
+        raise InvalidInput
+    return results[choice]
 
 def interact_with_user(downloader, format=None, bitrate=None):
     if format is None or bitrate is None:
@@ -297,8 +327,12 @@ def interact_with_user(downloader, format=None, bitrate=None):
         if format == "mp3":
             bitrate = input("Choose bitrate (128 / 320): ")
 
-    deezer_url = input("Enter a deezer url: ")
-    process_user_input(downloader, format, bitrate, deezer_url)
+    query = input("Enter a deezer url or a search query: ")
+    if query.startswith("http") and "deezer.com" in query:
+        deezer_entity = process_deezer_url(query)
+    else:
+        deezer_entity = process_user_search(query)
+    process_deezer_entity(downloader, format, bitrate, deezer_entity)
     return format, bitrate
 
 
@@ -330,7 +364,8 @@ def main():
             bitrate = format[4:]
             format = format[:3]
         deezer_url = sys.argv[2]
-        process_user_input(downloader, format, bitrate, deezer_url)
+        deezer_entity = process_deezer_url(deezer_url)
+        process_deezer_entity(downloader, format, bitrate, deezer_entity)
 
 
 if __name__ == "__main__":
