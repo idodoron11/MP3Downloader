@@ -11,6 +11,7 @@ import logging
 
 from exceptions import TaggerException
 
+logger = logging.getLogger("mp3downloader")
 
 class TagsStruct:
     def __init__(self):
@@ -74,7 +75,7 @@ class DeezerTagger(Tagger):
             self._commit()
         except Exception as e:
             self._rollback()
-            logging.error(traceback.format_exc())
+            logger.error(traceback.format_exc())
             raise TaggerException
 
     def _commit(self):
@@ -188,11 +189,11 @@ class ImageDownloader:
     def download(self, url):
         result = self.image_cache.search(url)
         if result is None:
-            logging.debug("Cache miss")
+            logger.debug("Cache miss")
             result = requests.get(url, stream=True)
             result.raw.decode_content = True
             self.image_cache.put(url, result)
             return result
         else:
-            logging.debug("Cache hit")
+            logger.debug("Cache hit")
             return result

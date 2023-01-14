@@ -23,8 +23,20 @@ import ui_elements
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
     InvalidInput
 
+# logging setup
+logger = logging.getLogger("mp3downloader")
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler = logging.FileHandler('mp3downloader.log', mode='w')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+stdout_handler = logging.StreamHandler()
+stdout_handler.setLevel(logging.INFO)
+stdout_handler.setFormatter(formatter)
+logger.addHandler(stdout_handler)
+
 # settings
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 WAIT_ENGINE_DEFAULT_RESET_INTERMAL = 15  # after every x minutes the wait engine will require a long break
 SHORT_WAIT_GAMMA_PARAMETERS = (2, 2.2)  # first parameter is k and the second is theta
 LONG_WAIT_GAMMA_PARAMETERS = (6, 60)  # see: https://www.medcalc.org/manual/gamma-distribution-functions.php
@@ -43,7 +55,7 @@ class WaitEngine:
     def reset(self):
         self.lastPause = self.lastReset = datetime.datetime.now()
         self.nextReset = self.lastReset + datetime.timedelta(minutes=self.resetInterval)
-        logging.info(f"Wait engine has been reset. Next reset will be in {self.resetInterval} minutes.")
+        logger.info(f"Wait engine has been reset. Next reset will be in {self.resetInterval} minutes.")
 
     def pause(self):
         self.lastPause = datetime.datetime.now()
@@ -62,20 +74,20 @@ class WaitEngine:
 
         if BYPASS_WAIT:
             if minimum > 0:
-                logging.info(f"Waiting {minimum} seconds.")
+                logger.info(f"Waiting {minimum} seconds.")
                 sleep(minimum)
             return
 
         if current_time >= self.nextReset:
             k, theta = LONG_WAIT_GAMMA_PARAMETERS
             penalty = max(minimum, np.random.gamma(k, theta))
-            logging.info(f"Waiting {penalty} seconds.")
+            logger.info(f"Waiting {penalty} seconds.")
             sleep(penalty)
             self.reset()
         else:
             k, theta = SHORT_WAIT_GAMMA_PARAMETERS
             penalty = max(minimum, np.random.gamma(k, theta))
-            logging.info(f"Waiting {penalty} seconds.")
+            logger.info(f"Waiting {penalty} seconds.")
             sleep(penalty)
 
 
@@ -87,7 +99,7 @@ class Downloader:
         self.bitrate = "mp3"
         self.format = "320"
 
-        logging.info("Opening a new browser window")
+        logger.info("Opening a new browser window")
         self.download_path = DOWNLOAD_DIR
         options = webdriver.ChromeOptions()
         options.add_experimental_option("prefs", {
@@ -108,21 +120,21 @@ class Downloader:
         self.bitrate = bitrate
 
     def _open_download_page(self, track):
-        logging.info("Going back to homepage")
+        logger.info("Going back to homepage")
         self.browser.get("https://free-mp3-download.net/")
         try:
             WebDriverWait(self.browser, 30).until(
                 EC.presence_of_element_located(ui_elements.HOME_PAGE["search_btn"])
             )
-            logging.info(f"Opening the download page of track {track.id}")
+            logger.info(f"Opening the download page of track {track.id}")
             self.browser.execute_script(f'window.location.href = "https://free-mp3-download.net/download.php?id={track.id}"')
-            logging.debug("Waiting for page load")
+            logger.debug("Waiting for page load")
             WebDriverWait(self.browser, 30).until(
                 EC.presence_of_element_located(ui_elements.DOWNLOAD_PAGE["download_btn"])
             )
         except Exception as e:
-            logging.error("Failed to load the download page")
-            logging.error(traceback.format_exc())
+            logger.error("Failed to load the download page")
+            logger.error(traceback.format_exc())
 
     def _get_format_selector(self):
         if self.format == "mp3":
@@ -149,12 +161,12 @@ class Downloader:
         download_btn.click()
 
     def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
-        logging.info("Waiting for download completion")
+        logger.info("Waiting for download completion")
         wait_until = datetime.datetime.now() + datetime.timedelta(minutes=wait_time)
         while datetime.datetime.now() <= wait_until:
             dir_content = glob.glob(os.path.join(self.download_path, "*.*"))
             if len(dir_content) == 0:
-                logging.debug("Download has not started yet")
+                logger.debug("Download has not started yet")
             else:
                 try:
                     latest_file = max(dir_content, key=os.path.getctime)
@@ -162,11 +174,11 @@ class Downloader:
                     # This exception may occur if one of the files in dir_content changed its name, was moved or
                     # removed. After download finish Chrome usually changes the file name, and if we don't have luck it
                     # could happen between dir_content creation to latest_file creation
-                    logging.debug("Directory structure changed")
+                    logger.debug("Directory structure changed")
                     continue
                 _, extension = os.path.splitext(latest_file)
                 if extension[1:] not in Downloader.supported_formats:
-                    logging.debug("Download has not finished yet")
+                    logger.debug("Download has not finished yet")
                 else:
                     return success_cb(latest_file)
         return failure_cb()
@@ -190,7 +202,7 @@ class Downloader:
             new_filename = slugify(new_filename)
             new_filepath = os.path.join(target_dir, f"{new_filename}{extension}")
             shutil.move(filepath, new_filepath)
-            logging.info(f"Track {track.id} has been saved to {new_filepath}")
+            logger.info(f"Track {track.id} has been saved to {new_filepath}")
             return new_filepath
 
         def on_download_failure():
@@ -204,8 +216,8 @@ class Downloader:
             if filepath is not None:
                 return filepath
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
-            logging.error(f"Could not download {track.artist.name} - {track.title}.")
-            logging.error(traceback.format_exc())
+            logger.error(f"Could not download {track.artist.name} - {track.title}.")
+            logger.error(traceback.format_exc())
         finally:
             self.wait_engine.pause()
 
@@ -263,7 +275,7 @@ def process_deezer_url(url):
             artist = client.get_artist(artist_id)
             return artist
     except DeezerAPIException as e:
-        logging.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         raise DownloaderException("Cannot access the track(s) in the provided Deezer URL")
 
 
@@ -273,12 +285,12 @@ def tag_downloaded_files(downloaded_files: dict[str, Track]):
     for filepath, track in downloaded_files.items():
         try:
             filename = os.path.basename(filepath)
-            logging.info(f"Adding metadata tags to {filename}")
+            logger.info(f"Adding metadata tags to {filename}")
             tagger.tag(filepath, track)
             tagger._commit()
         except:
-            logging.error(f"Could not tag {filepath}")
-            logging.error(traceback.format_exc())
+            logger.error(f"Could not tag {filepath}")
+            logger.error(traceback.format_exc())
             tagger._rollback()
 
 
@@ -354,7 +366,7 @@ def main():
             try:
                 format, bitrate = interact_with_user(downloader, format, bitrate)
             except:
-                logging.error(traceback.format_exc())
+                logger.error(traceback.format_exc())
             stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
             if stay_in_loop.lower() not in ["yes", "y"]:
                 break
