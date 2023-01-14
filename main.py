@@ -161,12 +161,24 @@ class Downloader:
         download_btn.click()
 
     def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
-        logger.info("Waiting for download completion")
+        def _update_status(download_status):
+            if _update_status.download_status == download_status:
+                return
+            _update_status.download_status = download_status
+            if download_status == 0:
+                logger.info("Waiting for download completion")
+            elif download_status == 1:
+                logger.debug("Download has not started yet")
+            elif download_status == 2:
+                logger.debug("Download started")
+        _update_status.download_status = -1
+                
+        _update_status(0)
         wait_until = datetime.datetime.now() + datetime.timedelta(minutes=wait_time)
         while datetime.datetime.now() <= wait_until:
             dir_content = glob.glob(os.path.join(self.download_path, "*.*"))
             if len(dir_content) == 0:
-                logger.debug("Download has not started yet")
+                _update_status(1)
             else:
                 try:
                     latest_file = max(dir_content, key=os.path.getctime)
@@ -178,7 +190,7 @@ class Downloader:
                     continue
                 _, extension = os.path.splitext(latest_file)
                 if extension[1:] not in Downloader.supported_formats:
-                    logger.debug("Download has not finished yet")
+                    _update_status(2)
                 else:
                     return success_cb(latest_file)
         return failure_cb()
