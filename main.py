@@ -156,7 +156,14 @@ class Downloader:
             if len(dir_content) == 0:
                 logging.debug("Download has not started yet")
             else:
-                latest_file = max(dir_content, key=os.path.getctime)
+                try:
+                    latest_file = max(dir_content, key=os.path.getctime)
+                except FileNotFoundError as e:
+                    # This exception may occur if one of the files in dir_content changed its name, was moved or
+                    # removed. After download finish Chrome usually changes the file name, and if we don't have luck it
+                    # could happen between dir_content creation to latest_file creation
+                    logging.debug("Directory structure changed")
+                    continue
                 _, extension = os.path.splitext(latest_file)
                 if extension[1:] not in Downloader.supported_formats:
                     logging.debug("Download has not finished yet")
