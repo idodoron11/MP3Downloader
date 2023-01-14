@@ -93,6 +93,7 @@ class Downloader:
         options.add_experimental_option("prefs", {
             "download.default_directory": self.download_path
         })
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.browser = webdriver.Chrome(options=options)
 
     def set_format(self, format, bitrate):
@@ -161,7 +162,6 @@ class Downloader:
                     logging.debug("Download has not finished yet")
                 else:
                     return success_cb(latest_file)
-            time.sleep(1)
         return failure_cb()
 
     def download(self, track, playlist_name=None, track_position=None):
@@ -348,7 +348,6 @@ def main():
                 format, bitrate = interact_with_user(downloader, format, bitrate)
             except:
                 logging.error(traceback.format_exc())
-            time.sleep(2)
             stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
             if stay_in_loop.lower() not in ["yes", "y"]:
                 break
