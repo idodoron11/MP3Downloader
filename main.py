@@ -55,7 +55,7 @@ class WaitEngine:
     def reset(self):
         self.lastPause = self.lastReset = datetime.datetime.now()
         self.nextReset = self.lastReset + datetime.timedelta(minutes=self.resetInterval)
-        logger.info(f"Wait engine has been reset. Next reset will be in {self.resetInterval} minutes.")
+        logger.debug(f"Wait engine has been reset. Next reset will be in {self.resetInterval} minutes.")
 
     def pause(self):
         self.lastPause = datetime.datetime.now()
@@ -93,6 +93,7 @@ class WaitEngine:
 
 class Downloader:
     supported_formats = ["mp3", "flac"]
+
     def __init__(self):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
@@ -120,21 +121,22 @@ class Downloader:
         self.bitrate = bitrate
 
     def _open_download_page(self, track):
-        logger.info("Going back to homepage")
+        logger.debug("Going back to homepage")
         self.browser.get("https://free-mp3-download.net/")
         try:
             WebDriverWait(self.browser, 30).until(
                 EC.presence_of_element_located(ui_elements.HOME_PAGE["search_btn"])
             )
             logger.info(f"Opening the download page of track {track.id} ({track.artist.name} - {track.title})")
-            self.browser.execute_script(f'window.location.href = "https://free-mp3-download.net/download.php?id={track.id}"')
+            self.browser.execute_script(
+                f'window.location.href = "https://free-mp3-download.net/download.php?id={track.id}"')
             logger.debug("Waiting for page load")
             WebDriverWait(self.browser, 30).until(
                 EC.presence_of_element_located(ui_elements.DOWNLOAD_PAGE["download_btn"])
             )
         except Exception as e:
             logger.error("Failed to load the download page")
-            logger.error(traceback.format_exc())
+            logger.debug(traceback.format_exc())
 
     def _get_format_selector(self):
         if self.format == "mp3":
@@ -152,8 +154,10 @@ class Downloader:
             captcha = captcha[0]
             if captcha.is_displayed():
                 self.wait_engine.pause()
+                logger.debug("User has to solve a CAPTCHA challenge")
                 input("Please solve the CAPTCHA challenge before proceeding.\n"
                       "Press ENTER to proceed.")
+                logger.debug("According to user report, CAPTCHA challenge has been solved")
                 self.wait_engine.resume()
         # format_selector.click()
         download_btn = self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["download_btn"])
@@ -171,8 +175,9 @@ class Downloader:
                 logger.debug("Download has not started yet")
             elif download_status == 2:
                 logger.debug("Download started")
+
         _update_status.download_status = -1
-                
+
         _update_status(0)
         wait_until = datetime.datetime.now() + datetime.timedelta(minutes=wait_time)
         while datetime.datetime.now() <= wait_until:
@@ -228,34 +233,35 @@ class Downloader:
             if filepath is not None:
                 return filepath
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
-            logger.error(f"Could not download {track.artist.name} - {track.title}.")
-            logger.error(traceback.format_exc())
+            logger.error(f"Could not download {track.artist.name} - {track.title}")
+            logger.debug(traceback.format_exc())
         finally:
             self.wait_engine.pause()
 
-    def download_tracks(self, track_list):
+    def download_tracks(self, deezer_entity):
         track_map = dict()
-        if isinstance(track_list, Playlist):
-            iterate_over = track_list.tracks
-            for index, track in enumerate(iterate_over):
-                filepath = self.download(track, playlist_name=track_list.title, track_position=index + 1)
+        logger.debug(f"User asked to download {deezer_entity.link}")
+        if isinstance(deezer_entity, Playlist):
+            track_list = deezer_entity.tracks
+            for index, track in enumerate(track_list):
+                filepath = self.download(track, playlist_name=deezer_entity.title, track_position=index + 1)
                 if filepath is not None:
                     track_map[filepath] = track
             return
-        elif isinstance(track_list, Track):
-            iterate_over = [track_list]
-        elif isinstance(track_list, Album):
-            iterate_over = track_list.tracks
-        elif isinstance(track_list, Artist):
-            albums = track_list.get_albums()
-            iterate_over = list()
+        elif isinstance(deezer_entity, Track):
+            track_list = [deezer_entity]
+        elif isinstance(deezer_entity, Album):
+            track_list = deezer_entity.tracks
+        elif isinstance(deezer_entity, Artist):
+            albums = deezer_entity.get_albums()
+            track_list = list()
             for album in albums:
                 for track in album.tracks:
-                    iterate_over.append(track)
+                    track_list.append(track)
         else:
             raise DownloaderException("Unsupported Deezer entity")
 
-        for index, track in enumerate(iterate_over):
+        for index, track in enumerate(track_list):
             filepath = self.download(track)
             if filepath is not None:
                 track_map[filepath] = track
@@ -287,9 +293,9 @@ def process_deezer_url(url):
             artist = client.get_artist(artist_id)
             return artist
     except DeezerAPIException as e:
-        logger.error(traceback.format_exc())
+        logger.error("A Deezer API error occurred. Read log for hints")
+        logger.debug(traceback.format_exc())
         raise DownloaderException("Cannot access the track(s) in the provided Deezer URL")
-
 
 
 def tag_downloaded_files(downloaded_files: dict[str, Track]):
@@ -297,18 +303,18 @@ def tag_downloaded_files(downloaded_files: dict[str, Track]):
     for filepath, track in downloaded_files.items():
         try:
             filename = os.path.basename(filepath)
-            logger.info(f"Adding track {track.id} metadata tags to {filename}")
+            logger.info(f"Adding the metadata tags of track {track.id} to {filename}")
             tagger.tag(filepath, track)
             tagger._commit()
         except:
             logger.error(f"Could not tag {filepath}")
-            logger.error(traceback.format_exc())
+            logger.debug(traceback.format_exc())
             tagger._rollback()
 
 
 def slugify(string):
     def predicate(char):
-        allow_list = "!@#$%^&()_+=,-';"
+        allow_list = "!@#$%^&()_+=,-';.[]"
         return str.isspace(char) or char in allow_list or str.isalnum(char)
 
     f = filter(predicate, string)
@@ -320,6 +326,7 @@ def process_deezer_entity(downloader, format, bitrate, deezer_entity):
     downloaded_files = downloader.download_tracks(deezer_entity)
     tag_downloaded_files(downloaded_files)
 
+
 def process_user_search(query):
     print("What are we searching for?")
     print("(1) artist")
@@ -328,22 +335,30 @@ def process_user_search(query):
     type = input()
     client = deezer.Client()
     if type == "1" or type == "artist":
+        logger.debug("User searched by artist")
         results = client.search_artists(query)
         headers = ["Choice Number", "Artist"]
         data = [(index + 1, artist.name) for index, artist in enumerate(results[:15])]
     elif type == "2" or type == "album":
+        logger.debug("User searched by album")
         results = client.search_albums(query)
         headers = ["Choice Number", "Artist", "Album", "Year"]
-        data = [(index + 1, album.artist.name, album.title, album.release_date.strftime("%Y")) for index, album in enumerate(results[:15])]
+        data = [(index + 1, album.artist.name, album.title, album.release_date.strftime("%Y")) for index, album in
+                enumerate(results[:15])]
     elif type == "3" or type == "track":
+        logger.debug("User searched by track")
         results = client.search(query)
         headers = ["Choice Number", "Artist", "Title", "Track#", "Album", "Year"]
-        data = [(index + 1, track.artist.name, track.title, track.track_position, track.album.title, track.album.release_date.strftime("%Y")) for index, track in enumerate(results[:15])]
+        data = [(index + 1, track.artist.name, track.title, track.track_position, track.album.title,
+                 track.album.release_date.strftime("%Y")) for index, track in enumerate(results[:15])]
     else:
         raise InvalidInput
 
-    print(tabulate(data, headers=headers))
+    results_tbl_visual = tabulate(data, headers=headers)
+    print(results_tbl_visual)
+    logger.debug(f"User is presented the following results:\n{results_tbl_visual}")
     choice = input(f"Please choose the desired result by typing in its choice number: ")
+    logger.debug(f"User chose result number {choice}")
     if not choice.isdigit():
         raise InvalidInput
     choice = int(choice) - 1
@@ -351,14 +366,15 @@ def process_user_search(query):
         raise InvalidInput
     return results[choice]
 
+
 def interact_with_user(downloader, format=None, bitrate=None):
-    if format is None or bitrate is None:
+    if format is None:
         format = input("Choose a format (mp3 / flac): ")
-        bitrate = ""
         if format == "mp3":
             bitrate = input("Choose bitrate (128 / 320): ")
 
     query = input("Enter a deezer url or a search query: ")
+    logger.debug(f"User chose format={format}, bitrate={bitrate}, query={query}")
     if query.startswith("http") and "deezer.com" in query:
         deezer_entity = process_deezer_url(query)
     else:
@@ -372,13 +388,15 @@ def main():
 
     is_interactive = len(sys.argv) != 3
     if is_interactive:
+        logger.debug("MP3 Downloader started in interactive mode")
         format = None
         bitrate = None
         while 1:
             try:
                 format, bitrate = interact_with_user(downloader, format, bitrate)
             except:
-                logger.error(traceback.format_exc())
+                logger.error("An error occured during interaction. Read log for hints")
+                logger.debug(traceback.format_exc())
             stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
             if stay_in_loop.lower() not in ["yes", "y"]:
                 break
@@ -388,12 +406,14 @@ def main():
                     format = None
                     bitrate = None
     else:
+        logger.debug("MP3 Downloader started in CLI mode")
         format = sys.argv[1]
         bitrate = None
         if format.startswith("mp3-"):
             bitrate = format[4:]
             format = format[:3]
         deezer_url = sys.argv[2]
+        logger.debug(f"User chose format={format}, bitrate={bitrate}, url={deezer_url}")
         deezer_entity = process_deezer_url(deezer_url)
         process_deezer_entity(downloader, format, bitrate, deezer_entity)
 
