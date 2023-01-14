@@ -126,7 +126,7 @@ class Downloader:
             WebDriverWait(self.browser, 30).until(
                 EC.presence_of_element_located(ui_elements.HOME_PAGE["search_btn"])
             )
-            logger.info(f"Opening the download page of track {track.id}")
+            logger.info(f"Opening the download page of track {track.id} ({track.artist.name} - {track.title})")
             self.browser.execute_script(f'window.location.href = "https://free-mp3-download.net/download.php?id={track.id}"')
             logger.debug("Waiting for page load")
             WebDriverWait(self.browser, 30).until(
@@ -297,7 +297,7 @@ def tag_downloaded_files(downloaded_files: dict[str, Track]):
     for filepath, track in downloaded_files.items():
         try:
             filename = os.path.basename(filepath)
-            logger.info(f"Adding metadata tags to {filename}")
+            logger.info(f"Adding track {track.id} metadata tags to {filename}")
             tagger.tag(filepath, track)
             tagger._commit()
         except:
