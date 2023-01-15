@@ -198,6 +198,7 @@ class Downloader:
                     _update_status(2)
                 else:
                     return success_cb(latest_file)
+            time.sleep(1)
         return failure_cb()
 
     def download(self, track, playlist_name=None, track_position=None):
@@ -247,7 +248,7 @@ class Downloader:
                 filepath = self.download(track, playlist_name=deezer_entity.title, track_position=index + 1)
                 if filepath is not None:
                     track_map[filepath] = track
-            return
+            return track_map
         elif isinstance(deezer_entity, Track):
             track_list = [deezer_entity]
         elif isinstance(deezer_entity, Album):
