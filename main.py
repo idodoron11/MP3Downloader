@@ -1,10 +1,13 @@
 import sys
+import ast
 import time
 import traceback
+
+import requests
 import selenium.common.exceptions
 from deezer import Track, Playlist, Album, Artist
 from deezer.exceptions import DeezerAPIException
-from selenium import webdriver
+from seleniumwire import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from time import sleep
@@ -17,7 +20,12 @@ import glob
 import deezer
 from pathlib import Path
 import re
+import threading
+
+from seleniumwire.request import HTTPHeaders
 from tabulate import tabulate
+
+from download_manger import DownloadRecord, Request, DownloadManager
 from tagger import DeezerTagger
 import ui_elements
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
@@ -91,8 +99,18 @@ class WaitEngine:
             sleep(penalty)
 
 
-class Downloader:
+class Bot:
     supported_formats = ["mp3", "flac"]
+    def interceptor(self, request, save_location=None):
+        if request.url is not None and request.url.startswith("https://free-mp3-download.net/tmp/"):
+            download_request = Request(method=request.method, url=request.url, headers=dict(request.headers), body=request.body.decode("UTF-8"))
+            request.url = "https://free-mp3-download.net"
+            request.method = "GET"
+            request.querystring = ""
+            request.body = b''
+            if save_location is not None:
+                DownloadRecord(request=download_request, save_location=save_location).download()
+                self._download_link_received = True
 
     def __init__(self):
         self.wait_engine = WaitEngine()
@@ -108,9 +126,11 @@ class Downloader:
         })
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.browser = webdriver.Chrome(options=options)
+        self.browser.request_interceptor = self.interceptor
+        self._download_link_received = False
 
     def set_format(self, format, bitrate):
-        if format is None or format not in Downloader.supported_formats:
+        if format is None or format not in Bot.supported_formats:
             raise UnsupportedFormatException
         if format == "mp3":
             if bitrate not in ["128", "320"]:
@@ -162,7 +182,17 @@ class Downloader:
         # format_selector.click()
         download_btn = self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["download_btn"])
         self.wait_engine.wait()
+        self._wait_for_download_link(download_btn)
+
+    def _wait_for_download_link(self, download_btn, wait_time=1):
+        self._download_link_received = False
         download_btn.click()
+        wait_until = datetime.datetime.now() + datetime.timedelta(minutes=wait_time)
+        while datetime.datetime.now() <= wait_until:
+            if self._download_link_received:
+                return True
+            time.sleep(1)
+        return False
 
     def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
         def _update_status(download_status):
@@ -194,49 +224,43 @@ class Downloader:
                     logger.debug("Directory structure changed")
                     continue
                 _, extension = os.path.splitext(latest_file)
-                if extension[1:] not in Downloader.supported_formats:
+                if extension[1:] not in Bot.supported_formats:
                     _update_status(2)
                 else:
                     return success_cb(latest_file)
         return failure_cb()
 
     def download(self, track, playlist_name=None, track_position=None):
-        def on_download_success(filepath, target_dir=None):
-            artist = track.artist.name
-            album = track.album.title
-            _, extension = os.path.splitext(filepath)
-            if target_dir is None and playlist_name is not None and track_position is not None:
-                target_dir = os.path.join(self.download_path, slugify(playlist_name))
-            elif target_dir is None:
-                target_dir = os.path.join(self.download_path, slugify(artist), slugify(album))
-            if not os.path.exists(target_dir):
-                os.makedirs(target_dir)
-            if track_position is None:
-                position = f"{track.disk_number}-{track.track_position:02}"
-            else:
-                position = f"{track_position:02}"
-            new_filename = f"{position} {track.artist.name} - {track.title}"
-            new_filename = slugify(new_filename)
-            new_filepath = os.path.join(target_dir, f"{new_filename}{extension}")
-            shutil.move(filepath, new_filepath)
-            logger.info(f"Track {track.id} has been saved to {new_filepath}")
-            return new_filepath
-
-        def on_download_failure():
-            raise DownloaderException("Download failure")
-
+        save_location = self._get_save_location(track, playlist_name=playlist_name, track_position=track_position)
+        self.browser.request_interceptor = lambda request: self.interceptor(request, save_location=save_location)
         self.wait_engine.resume()
         self._open_download_page(track)
         try:
             self._process_download_page()
-            filepath = self._wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
-            if filepath is not None:
-                return filepath
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
             logger.error(f"Could not download {track.artist.name} - {track.title}")
             logger.debug(traceback.format_exc())
         finally:
             self.wait_engine.pause()
+
+    def _get_save_location(self, track, target_dir=None, playlist_name=None, track_position=None):
+        artist = track.artist.name
+        album = track.album.title
+        extension = self.format
+        if target_dir is None and playlist_name is not None and track_position is not None:
+            target_dir = os.path.join(self.download_path, slugify(playlist_name))
+        elif target_dir is None:
+            target_dir = os.path.join(self.download_path, slugify(artist), slugify(album))
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+        if track_position is None:
+            position = f"{track.disk_number}-{track.track_position:02}"
+        else:
+            position = f"{track_position:02}"
+        new_filename = f"{position} {track.artist.name} - {track.title}"
+        new_filename = slugify(new_filename)
+        new_filepath = os.path.join(target_dir, f"{new_filename}.{extension}")
+        return new_filepath
 
     def download_tracks(self, deezer_entity):
         track_map = dict()
@@ -244,10 +268,8 @@ class Downloader:
         if isinstance(deezer_entity, Playlist):
             track_list = deezer_entity.tracks
             for index, track in enumerate(track_list):
-                filepath = self.download(track, playlist_name=deezer_entity.title, track_position=index + 1)
-                if filepath is not None:
-                    track_map[filepath] = track
-            return
+                self.download(track, playlist_name=deezer_entity.title, track_position=index + 1)
+            return track_map
         elif isinstance(deezer_entity, Track):
             track_list = [deezer_entity]
         elif isinstance(deezer_entity, Album):
@@ -262,9 +284,7 @@ class Downloader:
             raise DownloaderException("Unsupported Deezer entity")
 
         for index, track in enumerate(track_list):
-            filepath = self.download(track)
-            if filepath is not None:
-                track_map[filepath] = track
+            self.download(track)
         return track_map
 
 
@@ -321,9 +341,9 @@ def slugify(string):
     return "".join(f)
 
 
-def process_deezer_entity(downloader, format, bitrate, deezer_entity):
-    downloader.set_format(format, bitrate)
-    downloaded_files = downloader.download_tracks(deezer_entity)
+def process_deezer_entity(bot, format, bitrate, deezer_entity):
+    bot.set_format(format, bitrate)
+    downloaded_files = bot.download_tracks(deezer_entity)
     tag_downloaded_files(downloaded_files)
 
 
@@ -384,7 +404,9 @@ def interact_with_user(downloader, format=None, bitrate=None):
 
 
 def main():
-    downloader = Downloader()
+    bot = Bot()
+    download_manager_thread = threading.Thread(target=DownloadManager().run)
+    download_manager_thread.start()
 
     is_interactive = len(sys.argv) != 3
     if is_interactive:
@@ -393,7 +415,7 @@ def main():
         bitrate = None
         while 1:
             try:
-                format, bitrate = interact_with_user(downloader, format, bitrate)
+                format, bitrate = interact_with_user(bot, format, bitrate)
             except:
                 logger.error("An error occured during interaction. Read log for hints")
                 logger.debug(traceback.format_exc())
@@ -415,7 +437,10 @@ def main():
         deezer_url = sys.argv[2]
         logger.debug(f"User chose format={format}, bitrate={bitrate}, url={deezer_url}")
         deezer_entity = process_deezer_url(deezer_url)
-        process_deezer_entity(downloader, format, bitrate, deezer_entity)
+        process_deezer_entity(bot, format, bitrate, deezer_entity)
+
+    DownloadManager().stop()
+    download_manager_thread.join()
 
 
 if __name__ == "__main__":
