@@ -7,6 +7,7 @@ from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import ElementClickInterceptedException
 from time import sleep
 import datetime
 import numpy as np
@@ -162,7 +163,10 @@ class Downloader:
         # format_selector.click()
         download_btn = self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["download_btn"])
         self.wait_engine.wait()
-        download_btn.click()
+        try:
+            download_btn.click()
+        except selenium.ElementClickInterceptedException as e:
+            self.browser.execute_script("arguments[0].click();", download_btn)
 
     def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
         def _update_status(download_status):
