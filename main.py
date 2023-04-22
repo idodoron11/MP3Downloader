@@ -165,7 +165,7 @@ class Downloader:
         self.wait_engine.wait()
         try:
             download_btn.click()
-        except selenium.ElementClickInterceptedException as e:
+        except ElementClickInterceptedException as e:
             self.browser.execute_script("arguments[0].click();", download_btn)
 
     def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
