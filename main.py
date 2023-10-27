@@ -322,7 +322,7 @@ def slugify(string):
         allow_list = "!@#$%^&()_+=,-';.[]"
         return str.isspace(char) or char in allow_list or str.isalnum(char)
 
-    f = filter(predicate, string)
+    f = filter(predicate, string.strip('.'))
     return "".join(f)
 
 
