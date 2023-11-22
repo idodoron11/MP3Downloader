@@ -8,6 +8,8 @@ from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException
+from urllib.parse import quote
+import base64
 from time import sleep
 import datetime
 import numpy as np
@@ -108,7 +110,7 @@ class Downloader:
             "download.default_directory": self.download_path
         })
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        self.browser = webdriver.Chrome(options=options)
+        self.browser = webdriver.Chrome("/opt/homebrew/bin/chromedriver", options=options)
 
     def set_format(self, format, bitrate):
         if format is None or format not in Downloader.supported_formats:
@@ -129,8 +131,12 @@ class Downloader:
                 EC.presence_of_element_located(ui_elements.HOME_PAGE["search_btn"])
             )
             logger.info(f"Opening the download page of track {track.id} ({track.artist.name} - {track.title})")
+            query_parameter = quote(f"{track.artist.name} - {track.title}")
+            encoded_query = base64.b64encode(query_parameter.encode()).decode()
+            url = f"https://free-mp3-download.net/download.php?id={track.id}&q={encoded_query}"
+            logger.info(f"Navigating to {url}")
             self.browser.execute_script(
-                f'window.location.href = "https://free-mp3-download.net/download.php?id={track.id}"')
+                f'window.location.href = "{url}"')
             logger.debug("Waiting for page load")
             WebDriverWait(self.browser, 30).until(
                 EC.presence_of_element_located(ui_elements.DOWNLOAD_PAGE["download_btn"])
