@@ -110,7 +110,7 @@ class Downloader:
             "download.default_directory": self.download_path
         })
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        self.browser = webdriver.Chrome("/opt/homebrew/bin/chromedriver", options=options)
+        self.browser = webdriver.Chrome(options=options)
 
     def set_format(self, format, bitrate):
         if format is None or format not in Downloader.supported_formats:
