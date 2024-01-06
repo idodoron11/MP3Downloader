@@ -20,6 +20,8 @@ import glob
 import deezer
 from pathlib import Path
 import re
+
+from selenium_recaptcha_solver import RecaptchaSolver
 from tabulate import tabulate
 from tagger import DeezerTagger
 import ui_elements
@@ -111,6 +113,7 @@ class Downloader:
         })
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.browser = webdriver.Chrome(options=options)
+        self.captcha_solver = RecaptchaSolver(driver=self.browser)
 
     def set_format(self, format, bitrate):
         if format is None or format not in Downloader.supported_formats:
@@ -153,19 +156,29 @@ class Downloader:
         else:
             raise UIException("The requested format is unavailable")
 
+    def _handle_captcha(self):
+        recaptcha_iframe = self.browser.find_elements(*ui_elements.DOWNLOAD_PAGE["captcha"])
+        if len(recaptcha_iframe) < 0:
+            return
+        recaptcha_iframe = recaptcha_iframe[0]
+        if not recaptcha_iframe.is_displayed():
+            return
+
+        self.wait_engine.pause()
+        logger.debug("CAPTCHA challenge has been detected")
+        try:
+            self.captcha_solver.click_recaptcha_v2(iframe=recaptcha_iframe)
+        except:
+            logger.info("Could not solve recaptcha automatically. User has to solve it manually", exc_info=True)
+            input("Please solve the CAPTCHA challenge before proceeding.\n"
+                  "Press ENTER to proceed.")
+            logger.debug("The user reports that the CAPTCHA challenge has been solved")
+        self.wait_engine.resume()
+
     def _process_download_page(self):
         format_selector = self._get_format_selector()
         self.browser.execute_script("arguments[0].click();", format_selector)
-        captcha = self.browser.find_elements(*ui_elements.DOWNLOAD_PAGE["captcha"])
-        if len(captcha) > 0:
-            captcha = captcha[0]
-            if captcha.is_displayed():
-                self.wait_engine.pause()
-                logger.debug("User has to solve a CAPTCHA challenge")
-                input("Please solve the CAPTCHA challenge before proceeding.\n"
-                      "Press ENTER to proceed.")
-                logger.debug("According to user report, CAPTCHA challenge has been solved")
-                self.wait_engine.resume()
+        self._handle_captcha()
         # format_selector.click()
         download_btn = self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["download_btn"])
         self.wait_engine.wait()

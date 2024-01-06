@@ -9,5 +9,5 @@ DOWNLOAD_PAGE = {
     "mp3_128_radio_btn": (By.ID, "mp3-128"),
     "mp3_320_radio_btn": (By.ID, "mp3-320"),
     "flac_radio_btn": (By.ID, "flac"),
-    "captcha": (By.ID, "captcha")
+    "captcha": (By.XPATH, '//iframe[@title="reCAPTCHA"]')
 }
