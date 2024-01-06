@@ -1,32 +1,33 @@
+import base64
+import datetime
+import glob
+import logging
+import os
+import re
+import shutil
 import sys
 import time
 import traceback
+from pathlib import Path
+from time import sleep
+from urllib.parse import quote
+
+import deezer
+import numpy as np
 import selenium.common.exceptions
 from deezer import Track, Playlist, Album, Artist
 from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException
-from urllib.parse import quote
-import base64
-from time import sleep
-import datetime
-import numpy as np
-import logging
-import os
-import shutil
-import glob
-import deezer
-from pathlib import Path
-import re
-
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium_recaptcha_solver import RecaptchaSolver
 from tabulate import tabulate
-from tagger import DeezerTagger
+
 import ui_elements
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
     InvalidInput
+from tagger import DeezerTagger
 
 # logging setup
 logger = logging.getLogger("mp3downloader")
@@ -256,7 +257,7 @@ class Downloader:
             raise DownloaderException("Download failure")
 
         filepath = self.get_track_save_location(track, "." + self.format, playlist_name=playlist_name,
-                                                    track_position=track_position)
+                                                track_position=track_position)
         if os.path.exists(filepath):
             logger.info(f"Skipping track {track.id}, since it has already been downloaded to '{filepath}'")
             return filepath
