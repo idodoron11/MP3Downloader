@@ -100,8 +100,8 @@ class Downloader:
     def __init__(self):
         self.wait_engine = WaitEngine()
         self.wait_engine.pause()
-        self.bitrate = "mp3"
-        self.format = "320"
+        self.bitrate = "320"
+        self.format = "mp3"
 
         logger.info("Opening a new browser window")
         self.download_path = DOWNLOAD_DIR
@@ -211,24 +211,30 @@ class Downloader:
             time.sleep(1)
         return failure_cb()
 
+    def get_track_save_location(self, track, extension, playlist_name=None, track_position=None, target_dir=None):
+        artist = track.artist.name
+        album = track.album.title
+        if target_dir is None and playlist_name is not None and track_position is not None:
+            target_dir = os.path.join(self.download_path, slugify(playlist_name))
+        elif target_dir is None:
+            target_dir = os.path.join(self.download_path, slugify(artist), slugify(album))
+        if track_position is None:
+            position = f"{track.disk_number}-{track.track_position:02}"
+        else:
+            position = f"{track_position:02}"
+        new_filename = f"{position} {track.artist.name} - {track.title}"
+        new_filename = slugify(new_filename)
+        new_filepath = os.path.join(target_dir, f"{new_filename}{extension}")
+        return new_filepath
+
     def download(self, track, playlist_name=None, track_position=None):
-        def on_download_success(filepath, target_dir=None):
-            artist = track.artist.name
-            album = track.album.title
+        def on_download_success(filepath):
             _, extension = os.path.splitext(filepath)
-            if target_dir is None and playlist_name is not None and track_position is not None:
-                target_dir = os.path.join(self.download_path, slugify(playlist_name))
-            elif target_dir is None:
-                target_dir = os.path.join(self.download_path, slugify(artist), slugify(album))
+            new_filepath = self.get_track_save_location(track, extension, playlist_name=playlist_name,
+                                                        track_position=track_position)
+            target_dir = os.path.dirname(new_filepath)
             if not os.path.exists(target_dir):
                 os.makedirs(target_dir)
-            if track_position is None:
-                position = f"{track.disk_number}-{track.track_position:02}"
-            else:
-                position = f"{track_position:02}"
-            new_filename = f"{position} {track.artist.name} - {track.title}"
-            new_filename = slugify(new_filename)
-            new_filepath = os.path.join(target_dir, f"{new_filename}{extension}")
             shutil.move(filepath, new_filepath)
             logger.info(f"Track {track.id} has been saved to {new_filepath}")
             return new_filepath
@@ -236,6 +242,11 @@ class Downloader:
         def on_download_failure():
             raise DownloaderException("Download failure")
 
+        filepath = self.get_track_save_location(track, "." + self.format, playlist_name=playlist_name,
+                                                    track_position=track_position)
+        if os.path.exists(filepath):
+            logger.info(f"Skipping track {track.id}, since it has already been downloaded to '{filepath}'")
+            return filepath
         self.wait_engine.resume()
         self._open_download_page(track)
         try:
