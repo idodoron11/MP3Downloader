@@ -441,14 +441,13 @@ def start_interactive_mode(downloader):
         except:
             logger.error("An error occurred during interaction. Read log for hints")
             logger.debug(traceback.format_exc())
-        stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
-        if stay_in_loop.lower() not in ["yes", "y"]:
+        if not click.confirm("Would you like to download more stuff?"):
             break
-        if format is not None:
-            change_quality = input("Would you like to use the same format and bitrate? (yes / no): ")
-            if change_quality.lower() not in ["yes", "y"]:
-                format = None
-                bitrate = None
+        format = click.prompt("Choose a format", type=click.Choice(["mp3", "flac"]), default=format)
+        if format == "mp3":
+            bitrate = click.prompt("Choose bitrate", type=click.Choice(["128", "320"]), default=bitrate)
+        else:
+            bitrate = None
 
 def start_cli_mode(downloader, deezer_url, format, bitrate):
     logger.debug("MP3 Downloader started in CLI mode")
