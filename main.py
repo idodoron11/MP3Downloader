@@ -159,7 +159,7 @@ class Downloader:
 
     def _handle_captcha(self):
         recaptcha_iframe = self.browser.find_elements(*ui_elements.DOWNLOAD_PAGE["captcha"])
-        if len(recaptcha_iframe) < 0:
+        if len(recaptcha_iframe) <= 0:
             return
         recaptcha_iframe = recaptcha_iframe[0]
         if not recaptcha_iframe.is_displayed():
