@@ -28,6 +28,7 @@ import ui_elements
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
     InvalidInput
 from tagger import DeezerTagger
+import click
 
 # logging setup
 logger = logging.getLogger("mp3downloader")
@@ -418,40 +419,44 @@ def interact_with_user(downloader, format=None, bitrate=None):
     process_deezer_entity(downloader, format, bitrate, deezer_entity)
     return format, bitrate
 
-
-def main():
+@click.command()
+@click.option("--url", "-u", type=str, default=None, help="URL to a Deezer playlist, album, artist or track page")
+@click.option("--format", "-f", type=click.Choice(["mp3", "flac"], case_sensitive=False), help="the audio format to download")
+@click.option("--bitrate", "-b", type=click.Choice(["320", "128"]), help="the audio bitrate to download, if mp3 is chosen")
+def main(url, format, bitrate):
+    interactive_mode = url is None or format is None or (format == "mp3" and bitrate is None)
     downloader = Downloader()
-
-    is_interactive = len(sys.argv) != 3
-    if is_interactive:
-        logger.debug("MP3 Downloader started in interactive mode")
-        format = None
-        bitrate = None
-        while 1:
-            try:
-                format, bitrate = interact_with_user(downloader, format, bitrate)
-            except:
-                logger.error("An error occured during interaction. Read log for hints")
-                logger.debug(traceback.format_exc())
-            stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
-            if stay_in_loop.lower() not in ["yes", "y"]:
-                break
-            if format is not None:
-                change_quality = input("Would you like to use the same format and bitrate? (yes / no): ")
-                if change_quality.lower() not in ["yes", "y"]:
-                    format = None
-                    bitrate = None
+    if interactive_mode:
+        start_interactive_mode(downloader)
     else:
-        logger.debug("MP3 Downloader started in CLI mode")
-        format = sys.argv[1]
+        start_cli_mode(downloader, url, format, bitrate)
+
+def start_interactive_mode(downloader):
+    logger.debug("MP3 Downloader started in interactive mode")
+    format = None
+    bitrate = None
+    while 1:
+        try:
+            format, bitrate = interact_with_user(downloader, format, bitrate)
+        except:
+            logger.error("An error occurred during interaction. Read log for hints")
+            logger.debug(traceback.format_exc())
+        stay_in_loop = input("Would you like to download more stuff? (yes / no): ")
+        if stay_in_loop.lower() not in ["yes", "y"]:
+            break
+        if format is not None:
+            change_quality = input("Would you like to use the same format and bitrate? (yes / no): ")
+            if change_quality.lower() not in ["yes", "y"]:
+                format = None
+                bitrate = None
+
+def start_cli_mode(downloader, deezer_url, format, bitrate):
+    logger.debug("MP3 Downloader started in CLI mode")
+    logger.debug(f"User chose format={format}, bitrate={bitrate}, url={deezer_url}")
+    if format != "mp3":
         bitrate = None
-        if format.startswith("mp3-"):
-            bitrate = format[4:]
-            format = format[:3]
-        deezer_url = sys.argv[2]
-        logger.debug(f"User chose format={format}, bitrate={bitrate}, url={deezer_url}")
-        deezer_entity = process_deezer_url(deezer_url)
-        process_deezer_entity(downloader, format, bitrate, deezer_entity)
+    deezer_entity = process_deezer_url(deezer_url)
+    process_deezer_entity(downloader, format, bitrate, deezer_entity)
 
 
 if __name__ == "__main__":
