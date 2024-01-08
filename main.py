@@ -172,8 +172,8 @@ class Downloader:
             self.captcha_solver.click_recaptcha_v2(iframe=recaptcha_iframe)
         except:
             logger.info("Could not solve recaptcha automatically. User has to solve it manually", exc_info=True)
-            input("Please solve the CAPTCHA challenge before proceeding.\n"
-                  "Press ENTER to proceed.")
+            click.echo("Please solve the CAPTCHA challenge before proceeding.")
+            click.confirm("Have you solved it?", default=True)
             logger.debug("The user reports that the CAPTCHA challenge has been solved")
         self.wait_engine.resume()
 
@@ -369,50 +369,50 @@ def process_user_search(query):
     print("(1) artist")
     print("(2) album")
     print("(3) track")
-    type = input()
+    type = click.prompt("", type=click.Choice(["1", "2", "3", "artist", "album", "track"]))
     client = deezer.Client()
+    max_results_shown = 15
     if type == "1" or type == "artist":
         logger.debug("User searched by artist")
         results = client.search_artists(query)
         headers = ["Choice Number", "Artist"]
-        data = [(index + 1, artist.name) for index, artist in enumerate(results[:15])]
+        data = [(index + 1, artist.name) for index, artist in enumerate(results[:max_results_shown])]
     elif type == "2" or type == "album":
         logger.debug("User searched by album")
         results = client.search_albums(query)
         headers = ["Choice Number", "Artist", "Album", "Year"]
         data = [(index + 1, album.artist.name, album.title, album.release_date.strftime("%Y")) for index, album in
-                enumerate(results[:15])]
+                enumerate(results[:max_results_shown])]
     elif type == "3" or type == "track":
         logger.debug("User searched by track")
         results = client.search(query)
         headers = ["Choice Number", "Artist", "Title", "Track#", "Album", "Year"]
         data = [(index + 1, track.artist.name, track.title, track.track_position, track.album.title,
-                 track.album.release_date.strftime("%Y")) for index, track in enumerate(results[:15])]
+                 track.album.release_date.strftime("%Y")) for index, track in enumerate(results[:max_results_shown])]
     else:
         raise InvalidInput
 
     results_tbl_visual = tabulate(data, headers=headers)
     print(results_tbl_visual)
     logger.debug(f"User is presented the following results:\n{results_tbl_visual}")
-    choice = input(f"Please choose the desired result by typing in its choice number: ")
+    choice = click.prompt("Please choose the desired result by typing in its choice number", click.IntRange(1, len(data)))
     logger.debug(f"User chose result number {choice}")
-    if not choice.isdigit():
-        raise InvalidInput
-    choice = int(choice) - 1
-    if choice < 0 or choice >= len(data):
-        raise InvalidInput
+    choice -= 1
     return results[choice]
 
 
 def interact_with_user(downloader, format=None, bitrate=None):
-    if format is None:
-        format = input("Choose a format (mp3 / flac): ")
-        if format == "mp3":
-            bitrate = input("Choose bitrate (128 / 320): ")
+    format = click.prompt("Choose a format", type=click.Choice(["mp3", "flac"]), default=format)
+    if format == "mp3":
+        bitrate = click.prompt("Choose bitrate", type=click.Choice(["128", "320"]), default=bitrate)
+    else:
+        bitrate = None
 
-    query = input("Enter a deezer url or a search query: ")
+    query = click.prompt("Enter a deezer url or a search query", type=str)
     logger.debug(f"User chose format={format}, bitrate={bitrate}, query={query}")
-    if query.startswith("http") and "deezer.com" in query:
+    is_url = re.match("^https?:\/\/(www\.)?([-a-zA-Z0-9@:%._\+~#=]{2,256})+\.[a-z]{2,4}(\/?([-a-zA-Z0-9@:%_\+.~#?&=]+)?)*$",
+                      query)
+    if is_url:
         deezer_entity = process_deezer_url(query)
     else:
         deezer_entity = process_user_search(query)
@@ -443,11 +443,6 @@ def start_interactive_mode(downloader):
             logger.debug(traceback.format_exc())
         if not click.confirm("Would you like to download more stuff?"):
             break
-        format = click.prompt("Choose a format", type=click.Choice(["mp3", "flac"]), default=format)
-        if format == "mp3":
-            bitrate = click.prompt("Choose bitrate", type=click.Choice(["128", "320"]), default=bitrate)
-        else:
-            bitrate = None
 
 def start_cli_mode(downloader, deezer_url, format, bitrate):
     logger.debug("MP3 Downloader started in CLI mode")
