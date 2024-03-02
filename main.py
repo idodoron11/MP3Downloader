@@ -5,30 +5,28 @@ import logging
 import os
 import re
 import shutil
-import sys
 import time
 import traceback
 from pathlib import Path
 from time import sleep
 from urllib.parse import quote
 
+import click
 import deezer
 import numpy as np
-import selenium.common.exceptions
 from deezer import Track, Playlist, Album, Artist
 from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
-from selenium.common.exceptions import ElementClickInterceptedException
+from selenium.common.exceptions import ElementClickInterceptedException, NoSuchElementException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from tabulate import tabulate
 
 import ui_elements
+from custom_solver import CustomRecaptchaSolver
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
     InvalidInput, DownloadTimeoutException
-from custom_solver import CustomRecaptchaSolver
 from tagger import DeezerTagger
-import click
 
 # logging setup
 logger = logging.getLogger("mp3downloader")
@@ -282,7 +280,7 @@ class Downloader:
         except DownloadTimeoutException as e:
             logger.error(f"Download timeout: {track.artist.name} - {track.title}", exc_info=e)
             self.on_download_tineout()
-        except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
+        except (NoSuchElementException, Exception) as e:
             logger.error(f"Could not download {track.artist.name} - {track.title}", exc_info=e)
         finally:
             self.wait_engine.pause()
