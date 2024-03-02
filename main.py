@@ -279,10 +279,10 @@ class Downloader:
             if filepath is not None:
                 return filepath
         except DownloadTimeoutException as e:
-            logger.error(f"Download timeout: {track.artist.name} - {track.title}", e)
+            logger.error(f"Download timeout: {track.artist.name} - {track.title}", exc_info=e)
             self.on_download_tineout()
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
-            logger.error(f"Could not download {track.artist.name} - {track.title}", e)
+            logger.error(f"Could not download {track.artist.name} - {track.title}", exc_info=e)
         finally:
             self.wait_engine.pause()
 
@@ -345,7 +345,7 @@ def process_deezer_url(url):
             artist = client.get_artist(artist_id)
             return artist
     except DeezerAPIException as e:
-        logger.error("A Deezer API error occurred", e)
+        logger.error("A Deezer API error occurred", exc_info=e)
         raise DownloaderException("Cannot access the track(s) in the provided Deezer URL")
 
 
