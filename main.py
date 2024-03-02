@@ -41,6 +41,7 @@ logger.addHandler(file_handler)
 stdout_handler = logging.StreamHandler()
 stdout_handler.setLevel(logging.INFO)
 stdout_handler.setFormatter(formatter)
+stdout_handler.propagate = False
 logger.addHandler(stdout_handler)
 
 # settings

@@ -16,7 +16,7 @@ class CustomRecaptchaSolver(RecaptchaSolver):
         try:
             verified_icon = self._wait_for_element(
                 by=By.CSS_SELECTOR,
-                locator=".recaptcha-checkbox-checkmark",
+                locator=".recaptcha-checkbox-checked .recaptcha-checkbox-checkmark",
                 timeout=10
             )
             self._driver.switch_to.parent_frame()
