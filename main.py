@@ -269,6 +269,7 @@ class Downloader:
             _, extension = os.path.splitext(filepath)
             new_filepath = self.get_track_save_location(track, extension, playlist_name=playlist_name,
                                                         track_position=track_position)
+            logger.debug(f"Renaming '{os.path.basename(filepath)}' to '{os.path.basename(new_filepath)}'")
             target_dir = os.path.dirname(new_filepath)
             if not os.path.exists(target_dir):
                 os.makedirs(target_dir)
