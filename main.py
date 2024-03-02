@@ -17,7 +17,7 @@ import numpy as np
 from deezer import Track, Playlist, Album, Artist
 from deezer.exceptions import DeezerAPIException
 from selenium import webdriver
-from selenium.common.exceptions import ElementClickInterceptedException, NoSuchElementException
+from selenium.common.exceptions import ElementClickInterceptedException, NoSuchElementException, TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from tabulate import tabulate
@@ -25,7 +25,7 @@ from tabulate import tabulate
 import ui_elements
 from custom_solver import CustomRecaptchaSolver
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
-    InvalidInput, DownloadTimeoutException
+    InvalidInput, DownloadTimeoutException, ServerError
 from tagger import DeezerTagger
 
 # logging setup
@@ -193,10 +193,23 @@ class Downloader:
             EC.element_to_be_clickable(ui_elements.DOWNLOAD_PAGE["download_btn"])
         )
         self.wait_engine.wait()
+
         try:
             download_btn.click()
         except ElementClickInterceptedException as e:
             self.browser.execute_script("arguments[0].click();", download_btn)
+        if self._is_error_toast_displayed():
+            raise ServerError
+        pass
+
+    def _is_error_toast_displayed(self):
+        try:
+            WebDriverWait(self.browser, 10).until(
+                EC.presence_of_element_located(ui_elements.DOWNLOAD_PAGE["error_toast"])
+            )
+            return True
+        except (NoSuchElementException, TimeoutException):
+            return False
 
     def _wait_for_download_finish(self, success_cb=lambda *args: None, wait_time=1):
         def _update_status(download_status):

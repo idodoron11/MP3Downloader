@@ -10,6 +10,9 @@ class UnsupportedBitrateException(DownloaderException):
 class DownloadTimeoutException(DownloaderException):
     pass
 
+class ServerError(DownloaderException):
+    pass
+
 class UIException(Exception):
     pass
 
