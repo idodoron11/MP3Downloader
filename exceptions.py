@@ -7,6 +7,9 @@ class UnsupportedFormatException(DownloaderException):
 class UnsupportedBitrateException(DownloaderException):
     pass
 
+class DownloadTimeoutException(DownloaderException):
+    pass
+
 class UIException(Exception):
     pass
 

@@ -21,12 +21,12 @@ from selenium import webdriver
 from selenium.common.exceptions import ElementClickInterceptedException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium_recaptcha_solver import RecaptchaSolver
 from tabulate import tabulate
 
 import ui_elements
 from exceptions import UnsupportedFormatException, UnsupportedBitrateException, UIException, DownloaderException, \
-    InvalidInput
+    InvalidInput, DownloadTimeoutException
+from custom_solver import CustomRecaptchaSolver
 from tagger import DeezerTagger
 import click
 
@@ -109,13 +109,20 @@ class Downloader:
 
         logger.info("Opening a new browser window")
         self.download_path = DOWNLOAD_DIR
+        self.browser = None
+        self.captcha_solver = None
+        self.init_browser()
+
+    def init_browser(self):
         options = webdriver.ChromeOptions()
         options.add_experimental_option("prefs", {
             "download.default_directory": self.download_path
         })
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        if self.browser is not None:
+            self.browser.close()
         self.browser = webdriver.Chrome(options=options)
-        self.captcha_solver = RecaptchaSolver(driver=self.browser)
+        self.captcha_solver = CustomRecaptchaSolver(driver=self.browser)
 
     def set_format(self, format, bitrate):
         if format is None or format not in Downloader.supported_formats:
@@ -170,8 +177,9 @@ class Downloader:
         logger.debug("CAPTCHA challenge has been detected")
         try:
             self.captcha_solver.click_recaptcha_v2(iframe=recaptcha_iframe)
+            logger.debug("CPATCHA challenge has been solved automatically")
         except:
-            logger.info("Could not solve recaptcha automatically. User has to solve it manually", exc_info=True)
+            logger.debug("Could not solve recaptcha automatically. User has to solve it manually", exc_info=True)
             click.echo("Please solve the CAPTCHA challenge before proceeding.")
             click.confirm("Have you solved it?", default=True)
             logger.debug("The user reports that the CAPTCHA challenge has been solved")
@@ -182,14 +190,16 @@ class Downloader:
         self.browser.execute_script("arguments[0].click();", format_selector)
         self._handle_captcha()
         # format_selector.click()
-        download_btn = self.browser.find_element(*ui_elements.DOWNLOAD_PAGE["download_btn"])
+        download_btn = WebDriverWait(self.browser, 30).until(
+            EC.element_to_be_clickable(ui_elements.DOWNLOAD_PAGE["download_btn"])
+        )
         self.wait_engine.wait()
         try:
             download_btn.click()
         except ElementClickInterceptedException as e:
             self.browser.execute_script("arguments[0].click();", download_btn)
 
-    def _wait_for_download_finish(self, success_cb=lambda *args: None, failure_cb=lambda *args: None, wait_time=1):
+    def _wait_for_download_finish(self, success_cb=lambda *args: None, wait_time=1):
         def _update_status(download_status):
             if _update_status.download_status == download_status:
                 return
@@ -224,7 +234,7 @@ class Downloader:
                 else:
                     return success_cb(latest_file)
             time.sleep(1)
-        return failure_cb()
+        raise DownloadTimeoutException
 
     def get_track_save_location(self, track, extension, playlist_name=None, track_position=None, target_dir=None):
         artist = track.artist.name
@@ -254,8 +264,7 @@ class Downloader:
             logger.info(f"Track {track.id} has been saved to {new_filepath}")
             return new_filepath
 
-        def on_download_failure():
-            raise DownloaderException("Download failure")
+
 
         filepath = self.get_track_save_location(track, "." + self.format, playlist_name=playlist_name,
                                                 track_position=track_position)
@@ -266,14 +275,20 @@ class Downloader:
         self._open_download_page(track)
         try:
             self._process_download_page()
-            filepath = self._wait_for_download_finish(success_cb=on_download_success, failure_cb=on_download_failure)
+            filepath = self._wait_for_download_finish(success_cb=on_download_success)
             if filepath is not None:
                 return filepath
+        except DownloadTimeoutException as e:
+            logger.error(f"Download timeout: {track.artist.name} - {track.title}", e)
+            self.on_download_tineout()
         except (selenium.common.exceptions.NoSuchElementException, Exception) as e:
-            logger.error(f"Could not download {track.artist.name} - {track.title}")
-            logger.debug(traceback.format_exc())
+            logger.error(f"Could not download {track.artist.name} - {track.title}", e)
         finally:
             self.wait_engine.pause()
+
+    def on_download_tineout(self):
+        logger.info("Closing browser and reopening, to ensure no files are being downloaded at the moment")
+        self.init_browser()
 
     def download_tracks(self, deezer_entity):
         track_map = dict()
@@ -330,8 +345,7 @@ def process_deezer_url(url):
             artist = client.get_artist(artist_id)
             return artist
     except DeezerAPIException as e:
-        logger.error("A Deezer API error occurred. Read log for hints")
-        logger.debug(traceback.format_exc())
+        logger.error("A Deezer API error occurred", e)
         raise DownloaderException("Cannot access the track(s) in the provided Deezer URL")
 
 
@@ -395,9 +409,11 @@ def process_user_search(query):
     results_tbl_visual = tabulate(data, headers=headers)
     print(results_tbl_visual)
     logger.debug(f"User is presented the following results:\n{results_tbl_visual}")
-    choice = click.prompt("Please choose the desired result by typing in its choice number", click.IntRange(1, len(data)))
+    choice = click.prompt("Please choose the desired result by typing in its choice number", type=click.IntRange(0, len(data)))
     logger.debug(f"User chose result number {choice}")
     choice -= 1
+    if choice < 0:
+        raise InvalidInput("User didn't find what he wanted")
     return results[choice]
 
 
