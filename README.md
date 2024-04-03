@@ -1,6 +1,8 @@
 # MP3 Downloader
 I wrote this script to automate music downloading from https://free-mp3-download.net.
 
+$$This project is archived since https://free-mp3-download.net has shut down**
+
 ## Requirements
 1. Python 3
 2. You will need to have chromedriver installed. The path to the chromedriver binaries should be in the PATH environment variable.
