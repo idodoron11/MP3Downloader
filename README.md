@@ -1,7 +1,7 @@
 # MP3 Downloader
 I wrote this script to automate music downloading from https://free-mp3-download.net.
 
-$$This project is archived since https://free-mp3-download.net has shut down**
+**This project is archived since https://free-mp3-download.net has shut down**
 
 ## Requirements
 1. Python 3
